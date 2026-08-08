@@ -122,6 +122,41 @@ def _eval_run() -> None:
     store.close()
 
 
+def _scenario_list() -> None:
+    from quantra.scenarios.registry import list_scenarios
+
+    for scenario in list_scenarios():
+        print(f"[{scenario.id}] {scenario.title}")
+        print(f"    角色: {scenario.role}")
+        print(f"    业务任务: {scenario.business_task}")
+        print()
+
+
+def _scenario_run(scenario_id: str) -> None:
+    from quantra.scenarios.simulator import ScenarioRunner
+
+    runner = ScenarioRunner(session="cli")
+    report = runner.run(scenario_id, save_dir="data/scenario_reports")
+    print(f"=== 场景: {report['title']} ===")
+    print(f"角色: {report['role']}")
+    print(f"业务任务: {report['business_task']}")
+    print(f"输入研报: {', '.join(report['reports'])}")
+    print()
+    for item in report["items"]:
+        print(f"--- 问题: {item['question']}")
+        print(item["memo"])
+        print(f"[模型] {item['model']} ｜ [成本] ¥{item['cost_yuan']:.4f} ｜ "
+              f"[引用覆盖率] {item['coverage']['coverage']:.0%} ｜ "
+              f"[步骤] {len(item['steps'])}")
+        print()
+    agg = report["aggregate"]
+    print(f"=== 汇总: 平均引用覆盖率 {agg['avg_coverage']:.0%} ｜ "
+          f"总成本 ¥{agg['total_cost_yuan']:.4f} ｜ 总步骤 {agg['total_steps']}")
+    print(f"验收标准: {report['success_criteria']}")
+    print(f"场景报告已保存: data/scenario_reports/{report['scenario_id']}.json")
+    runner.close()
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="quantra", description="Agentic 研报投研工作台")
     sub = parser.add_subparsers(dest="command")
@@ -142,6 +177,12 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser("eval", help="运行引用覆盖率评测")
 
+    scenario_p = sub.add_parser("scenario", help="业务场景模拟器")
+    scenario_sub = scenario_p.add_subparsers(dest="scenario_cmd")
+    scenario_sub.add_parser("list", help="列出内置场景")
+    scenario_run_p = scenario_sub.add_parser("run", help="运行一个场景")
+    scenario_run_p.add_argument("scenario_id")
+
     args = parser.parse_args(argv)
     if args.command == "init-db":
         store = _open_store()
@@ -157,6 +198,14 @@ def main(argv: list[str] | None = None) -> None:
         _audit_log(args.limit)
     elif args.command == "eval":
         _eval_run()
+    elif args.command == "scenario":
+        if args.scenario_cmd == "list":
+            _scenario_list()
+        elif args.scenario_cmd == "run":
+            _scenario_run(args.scenario_id)
+        else:
+            print("用法: python -m quantra.app.cli scenario {list|run <id>}")
+            sys.exit(1)
     else:
         parser.print_help()
         sys.exit(1)
