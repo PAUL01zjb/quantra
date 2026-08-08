@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantra"
+version = "0.1.0"
+description = "Agentic 研报投研工作台：解析 → 指标抽取 → 混合检索 → 多 Agent 编排 → 带引用备忘录"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "pdfplumber>=0.11",
+    "pypdf>=4.0",
+    "numpy>=1.24",
+    "pandas>=2.0",
+]
+
+[project.optional-dependencies]
+demo = ["streamlit>=1.36"]
+eval = ["pytest>=8.0"]
+cn = ["jieba>=0.42"]
+
+[tool.setuptools.packages.find]
+include = ["quantra*"]
