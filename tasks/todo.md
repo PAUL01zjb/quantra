@@ -16,16 +16,17 @@
 
 ## Phase 2：Agent 编排 + 成本路由 + 审计（D4–D5）
 
-- [ ] Task 7: 工具层（search / extract_metric / calc_trend / list_reports）
-- [ ] Task 8: 成本感知 router
-- [ ] Task 9: Plan-and-Execute 主循环（LLM + dry-run 双模式）
-- [ ] Task 10: 审计回放
+- [ ] Task 7: 工具 Schema 从函数类型注解自动生成 + 参数校验/错误恢复/超时
+- [ ] Task 8: 编排状态机（三态 + 预算上限 + 重试回退）
+- [ ] Task 9: 成本感知 router + 每步 trace（模型/成本/延迟）
+- [ ] Task 10: 审计回放 + 安全钩子（副作用操作人工审批）
+- [ ] Task 11（加分）: 多 Agent 角色（研究/质检/风控评审）
 
 ## Phase 3：评测与打磨（D6–D7）
 
-- [ ] Task 11: 引用覆盖率 + 幻觉守卫评测（≥10 个样例）
-- [ ] Task 12: README / 架构图 / 简历叙事 / 示例输出
-- [ ] Task 13（可选）: 开源 PR 贡献
+- [ ] Task 12: 金标准评测（≥10 条问答 + 回归对比）
+- [ ] Task 13: README / 架构图 / 简历叙事 / 示例输出
+- [ ] Task 14（可选）: 开源 PR 贡献
 
 ## 收尾检查点
 
