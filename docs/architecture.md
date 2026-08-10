@@ -172,9 +172,13 @@ erDiagram
 
 待确认点：
 
-- [ ] 是否接受"company 主维度 + metric_fact 复合键"分层模型
-- [ ] 是否需要 ticker（股票代码）维度，还是先用公司名称
-- [ ] 指标词典（metric_name 归一化）第一版按哪些指标固定（毛利率/净利率/营收/归母净利/ROE/EPS/PE/PB…）
+- [x] 是否接受"company 主维度 + metric_fact 复合键"分层模型 —— **已确认（2026-08-10）**
+- [x] 是否需要 ticker（股票代码）维度 —— **已确认：优先股票代码**（如 600519.SH，未识别时按公司名 hash 兜底）
+- [x] 指标词典第一版 —— **已确认：最大公约数**（毛利率/净利率/营业收入/归母净利润/净利润/ROE/EPS/PE/PB）
+
+实现状态：`storage/schema.py`（DDL）、`extraction/dictionary.py`（指标词典）、
+`extraction/extractor.py`（ParseResult → ExtractionResult）、`storage/archive.py`（归档 + 公司卡片聚合视图）已落地，
+CLI `extract <path>` 一键"解析 → 抽取 → 归档 → 公司卡片"。
 
 ## 6. 数据模型（现状）
 

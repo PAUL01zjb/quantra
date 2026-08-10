@@ -20,7 +20,8 @@
 ### Phase 0：项目启动与数据接入（D1）
 
 - [ ] Task 1: 跑通仓库骨架与 CLI（init-db / demo-memo / ingest / query）
-- [ ] Task 2: 解析模块支持 MD/TXT/PDF，抽取标题、机构、评级、目标价、财务指标、表格
+- [x] Task 2: 解析小框架（输入/输出接口 + pdfplumber 引擎 + MinerU/Docling 插槽）
+- [x] Task 2b: 归档层落地（company/report/metric_fact 复合键 + 指标词典 + 公司卡片）
 - [ ] Task 3: 3–5 份真实研报入库，输出抽取结果（数量/准确率目检）
 
 ### Checkpoint: Foundation

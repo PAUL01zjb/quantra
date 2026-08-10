@@ -182,6 +182,34 @@ def _parse_file(path: str, engine: str, out: str) -> None:
         print(f"\nMarkdown 已保存: {target}")
 
 
+def _extract_file(path: str, engine: str) -> None:
+    from quantra.extraction.extractor import extract
+    from quantra.parsing import parse_document
+    from quantra.parsing.interfaces import ParseRequest
+    from quantra.storage.archive import ArchiveStore
+
+    parse_result = parse_document(ParseRequest(source=path, engine=engine))
+    result = extract(parse_result)
+    store = ArchiveStore(get_settings().db_path)
+    ids = store.archive(result, parse_result.blocks)
+    card = store.query_company_card(ids["company_id"])
+
+    print(f"=== 抽取与归档（引擎: {result.engine}）===")
+    print(f"公司: {card['company']['name']} ｜ ticker: {card['company'].get('ticker') or '未识别'}")
+    print(f"研报: {result.report_meta.title} ｜ {result.report_meta.broker} ｜ {result.report_meta.report_date}")
+    print(f"评级: {result.report_meta.rating or '-'} ｜ 目标价: {result.report_meta.target_price or '-'} 元")
+    print()
+    for metric_name, rows in card["metrics"].items():
+        values = ", ".join(f"{r['period']}={r['value']}{r['unit']}" for r in rows)
+        print(f"  {metric_name}: {values}")
+    if card["risks"]:
+        print("\n风险提示:")
+        for risk in card["risks"]:
+            print(f"  - [{risk['category']}] {risk['risk_text']}")
+    print(f"\n[归档] report={ids['report_id'][:8]} metrics={ids['metrics']} chunks={ids['chunks']} risks={ids['risks']}")
+    store.close()
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="quantra", description="Agentic 研报投研工作台")
     sub = parser.add_subparsers(dest="command")
@@ -213,6 +241,10 @@ def main(argv: list[str] | None = None) -> None:
     parse_p.add_argument("--engine", default="auto", help="auto/pdfplumber/mineru/docling")
     parse_p.add_argument("--out", default="", help="保存 Markdown 到指定路径")
 
+    extract_p = sub.add_parser("extract", help="抽取并归档（ParseResult -> ExtractionResult -> 数据库）")
+    extract_p.add_argument("path")
+    extract_p.add_argument("--engine", default="auto", help="auto/pdfplumber/mineru/docling")
+
     args = parser.parse_args(argv)
     if args.command == "init-db":
         store = _open_store()
@@ -238,6 +270,8 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(1)
     elif args.command == "parse":
         _parse_file(args.path, args.engine, args.out)
+    elif args.command == "extract":
+        _extract_file(args.path, args.engine)
     else:
         parser.print_help()
         sys.exit(1)

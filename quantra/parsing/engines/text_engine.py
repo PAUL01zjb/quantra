@@ -15,16 +15,49 @@ class TextEngine(BaseParser):
         text = Path(request.source).read_text(encoding="utf-8", errors="ignore")
         blocks: list[DocumentBlock] = []
         order = 0
-        for raw in re.split(r"\n\s*\n", text.strip()):
-            line = raw.strip()
+        lines = text.splitlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
             if not line:
+                i += 1
                 continue
-            if line.startswith("#") or ("\n" not in line and len(line) <= 60):
+            # markdown 表格：连续 | 行归为一个 table 块
+            if line.startswith("|"):
+                table_lines = []
+                while i < len(lines) and lines[i].strip().startswith("|"):
+                    table_lines.append(lines[i].strip())
+                    i += 1
+                rows = [
+                    [cell.strip() for cell in row.strip().strip("|").split("|")]
+                    for row in table_lines
+                    if "---" not in row
+                ]
+                blocks.append(
+                    DocumentBlock(
+                        block_type="table",
+                        text=" | ".join(table_lines[:3]),
+                        page=0,
+                        table_rows=rows,
+                        order=order,
+                    )
+                )
+                order += 1
+                continue
+            if line.startswith("#"):
                 block_type = "heading"
             else:
                 block_type = "paragraph"
-            blocks.append(DocumentBlock(block_type=block_type, text=line, page=0, order=order))
+            blocks.append(
+                DocumentBlock(
+                    block_type=block_type,
+                    text=re.sub(r"^#{1,6}\s*", "", line),
+                    page=0,
+                    order=order,
+                )
+            )
             order += 1
+            i += 1
         markdown = text
         return ParseResult(
             source=str(request.source),

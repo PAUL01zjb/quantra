@@ -5,7 +5,8 @@
 ## Phase 0：数据接入（D1）
 
 - [ ] Task 1: 跑通 CLI（init-db / demo-memo / ingest / query）
-- [ ] Task 2: 解析 MD/TXT/PDF，抽取标题、机构、评级、目标价、指标、表格
+- [x] Task 2: 解析小框架（输入/输出接口 + pdfplumber + MinerU 插槽）
+- [x] Task 2b: 归档层（company 主维度 + metric_fact 复合键 + 指标词典 + 公司卡片）
 - [ ] Task 3: 3–5 份真实研报入库并目检抽取结果
 
 ## Phase 1：检索与记忆（D2–D3）
