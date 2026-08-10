@@ -34,6 +34,28 @@ python -m quantra.app.cli audit-log --limit 20
 接 LLM（可选）：复制 `.env.example` 为 `.env`（或导出环境变量），配置 OpenAI 兼容接口。
 未配置时系统自动进入 dry-run 确定性模式，功能链路依然完整，只是备忘录由模板生成。
 
+## 解析引擎（输入接口 → 引擎 → 输出接口）
+
+解析层已按"输入输出接口化"设计，本地无需安装任何重型依赖即可开发：
+
+| 引擎 | 适用 | 依赖 |
+|---|---|---|
+| `pdfplumber`（默认） | 文本型 PDF，几何规则抽取 | 轻量，已内置 |
+| `mineru`（可选） | 复杂版式/扫描件，CNN 版面检测 + OCR | 重型（torch + 模型权重），**仓库已集成，本地无需安装** |
+| `docling`（可选） | IBM 文档转换流水线 | 中等 |
+
+```bash
+# 本地开发/测试（默认引擎）
+python -m quantra.app.cli parse data/samples/示例-消费龙头2025年报点评.pdf --out /tmp/out.md
+
+# 部署时启用 MinerU（重型依赖，含 torch 与模型权重）
+# pip install "magic-pdf[full]"
+python -m quantra.app.cli parse 研报.pdf --engine mineru --out /tmp/out.md
+```
+
+无论底层用哪个引擎，上层拿到的都是同一输出契约 `ParseResult`（blocks / markdown / stats / engine），
+换引擎不影响抽取、归档与 Agent 层。
+
 ## 架构
 
 ```

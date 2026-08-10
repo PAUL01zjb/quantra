@@ -120,19 +120,75 @@ sequenceDiagram
 
 为什么：金融场景幻觉代价高；"引用可溯源"不是口号，是评测指标。
 
-## 5. 数据模型
+### 4.6 解析层 = 接口化流水线，不是"一个解析函数"
+
+决策：`ParseRequest`（输入契约：来源/语言/模式/是否解析表格/页范围/引擎）→ 引擎层（pdfplumber 默认、MinerU/Docling 可选）→ `ParseResult`（输出契约：blocks/markdown/stats/engine）。
+
+为什么：解析方案演进快（CNN 版面检测 → VLM 端到端），接口隔离后换引擎不影响上层；上层（抽取/归档/Agent）只依赖输出契约，可测试、可审计。
+
+代价：多一层抽象；用引擎选择策略（auto → 文本型用 pdfplumber，扫描件切 MinerU）缓解。
+
+### 4.7 MinerU 引擎已集成（本地无需安装）
+
+仓库内 `parsing/engines/mineru_engine.py` + `mineru_mapper.py` 已实现 MinerU 接入：
+命令行 `magic-pdf` 产出 `content_list.json` + `.md`，由映射层转换为统一 `ParseResult`。
+`mineru_mapper` 是纯函数（离线可测），对 MinerU 版本间结构差异做"宽容映射"，
+结构不认识时兜底从 markdown 重新分块，保证输出契约稳定。
+
+## 5. 输出格式提案（待用户确认）
+
+业务目标：**交易员快速确认研报信息 + 沉淀可查询数据库**。
+
+用户方向："某公司一个主键 → 各项指标"。确认成立，但建议主键分层：
+
+```mermaid
+erDiagram
+  company ||--o{ report : "被研报覆盖"
+  company ||--o{ metric_fact : "拥有指标"
+  report ||--o{ metric_fact : "产出指标"
+  report ||--o{ document_chunk : "切块"
+  report ||--o{ risk : "披露风险"
+  report ||--o{ conclusion : "关键结论"
+```
+
+表设计：
+
+| 表 | 主键 | 关键字段 | 说明 |
+|---|---|---|---|
+| `company` | company_id | name, ticker, sector | 主维度（用户关心的"公司主键"）|
+| `report` | report_id | company_id, broker, analyst, date, title, rating, target_price | 研报档案（一家公司多份研报）|
+| `metric_fact` | (report_id, company_id, metric_name, period) | value, unit, source_page, raw_text, method, confidence | **指标事实表**（复合键）|
+| `document_chunk` | chunk_id | report_id, heading, page, text | 检索/引用用原文块 |
+| `risk` | risk_id | report_id, company_id, risk_text, category | 风险提示 |
+| `conclusion` | conclusion_id | report_id, company_id, text, evidence_chunk_ids | 关键结论 |
+| `extraction_audit` | audit_id | report_id, action, model, cost, status | 抽取审计 |
+
+为什么不能只有"公司 → 指标"：
+
+1. **一家公司有多份研报**（不同券商、不同时点）——指标必须挂在 report 维度上，才能做时间序列、多券商对比；
+2. **指标本身有期间维度**（2023/2024/2025E）——`metric_fact` 复合键 (report, company, metric, period) 是唯一稳定的事实粒度；
+3. **引用溯源**要求指标能回到原文页码/章节——保留 raw_text + source_page；
+4. **交易员确认台看到的"公司卡片"** 是聚合视图：company + 各指标最新值/历史 + 评级/目标价 + 风险 + 来源引用——底层仍是上面的表。
+
+待确认点：
+
+- [ ] 是否接受"company 主维度 + metric_fact 复合键"分层模型
+- [ ] 是否需要 ticker（股票代码）维度，还是先用公司名称
+- [ ] 指标词典（metric_name 归一化）第一版按哪些指标固定（毛利率/净利率/营收/归母净利/ROE/EPS/PE/PB…）
+
+## 6. 数据模型（现状）
 
 核心实体：`Report / Section / Table / Metric / Chunk / AgentStep / AgentResult / Scenario`。
 
 存储：SQLite 单文件（reports、sections、metrics、chunks、audit_log、memory），零部署成本。
 
-## 6. 可观测性与安全
+## 7. 可观测性与安全
 
 - 每个工具调用：动作、参数、模型、成本、状态全部进 `audit_log`，`audit-log` 命令可回放。
 - 每次运行：生成 trace（步骤、延迟、token、成本预估）。
 - 安全：工具白名单 + 参数校验；有副作用操作标记为需人工审批（`side_effect=True`），后续接审批钩子。
 
-## 7. 演进路线
+## 8. 演进路线
 
 - D3：向量检索接入与 RRF 评估
 - D5：多 Agent 角色（研究/质检/风控评审）
