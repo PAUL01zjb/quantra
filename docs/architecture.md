@@ -2,6 +2,28 @@
 
 > 更新：2026-08-08 ｜ 状态：与代码同步演进
 
+## 0. 生产架构（GitHub 展示版，v1.0 目标）
+
+本仓库对外展示的完整生产架构，与本地学习版共享同一套输出契约：
+
+```mermaid
+flowchart LR
+  A["研报 PDF（复杂版式/扫描件）"] --> B["MinerU 解析<br/>版面检测 + OCR + 表格结构"]
+  B --> C["schema-guided LLM 抽取<br/>+ 规则校验双通道"]
+  C --> D["归档层<br/>company / report / metric_fact / chunk / risk / conclusion"]
+  D --> E["Hybrid RAG<br/>bge-m3 + BM25 + rerank + text2sql"]
+  E --> F["LangGraph 状态机编排<br/>+ 人工确认节点"]
+  F --> G["交易员确认台（公司卡片 + 带引用备忘录）"]
+  F --> H["RAGAS 评测 + Langfuse 可观测 + LiteLLM 成本路由"]
+```
+
+技术选型：MinerU/Docling（解析）、schema-guided LLM + 规则校验（抽取）、
+bge-m3 + BM25 + rerank（检索）、LangGraph + MCP（编排）、Qdrant/pgvector（向量）、
+RAGAS（评测）、Langfuse（可观测）、LiteLLM（路由）。
+
+> 本地学习版 = 生产架构的轻量子集：pdfplumber（解析）+ 规则（抽取）+
+> 手写 BM25（检索）+ Plan-and-Execute（编排），零重型依赖，接口与生产版一致。
+
 ## 1. 总体架构
 
 ```mermaid

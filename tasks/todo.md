@@ -6,7 +6,9 @@
 
 - [ ] Task 1: 跑通 CLI（init-db / demo-memo / ingest / query）
 - [x] Task 2: 解析小框架（输入/输出接口 + pdfplumber + MinerU 插槽）
-- [x] Task 2b: 归档层（company 主维度 + metric_fact 复合键 + 指标词典 + 公司卡片）
+- [x] Task 2b: 归档层（company 主维度 + metric_fact 复合键 + 公司卡片）
+- [x] Task 2c: 行业指标词典（10 行业约 90 项）
+- [x] Task 2d: README/架构改写为生产版（大引擎版本）
 - [ ] Task 3: 3–5 份真实研报入库并目检抽取结果
 
 ## Phase 1：检索与记忆（D2–D3）

@@ -21,7 +21,9 @@
 
 - [ ] Task 1: 跑通仓库骨架与 CLI（init-db / demo-memo / ingest / query）
 - [x] Task 2: 解析小框架（输入/输出接口 + pdfplumber 引擎 + MinerU/Docling 插槽）
-- [x] Task 2b: 归档层落地（company/report/metric_fact 复合键 + 指标词典 + 公司卡片）
+- [x] Task 2b: 归档层落地（company/report/metric_fact 复合键 + 公司卡片）
+- [x] Task 2c: 行业指标词典（10 行业、约 90 项规范指标）
+- [x] Task 2d: GitHub 展示层改写为生产版架构（大引擎版本）
 - [ ] Task 3: 3–5 份真实研报入库，输出抽取结果（数量/准确率目检）
 
 ### Checkpoint: Foundation
