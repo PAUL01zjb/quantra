@@ -210,6 +210,20 @@ def _extract_file(path: str, engine: str) -> None:
     store.close()
 
 
+def _verify(out: str) -> None:
+    from quantra.verification.verify import render_report, run_verification
+
+    result = run_verification()
+    report = render_report(result)
+    if out:
+        target = Path(out)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(report, encoding="utf-8")
+        print(f"验证报告已保存: {target}")
+    print(report[:2000])
+    print("\n[结论]", "全部通过 ✅" if result.passed else "存在未通过项 ❌")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="quantra", description="Agentic 研报投研工作台")
     sub = parser.add_subparsers(dest="command")
@@ -245,6 +259,9 @@ def main(argv: list[str] | None = None) -> None:
     extract_p.add_argument("path")
     extract_p.add_argument("--engine", default="auto", help="auto/pdfplumber/mineru/docling")
 
+    verify_p = sub.add_parser("verify", help="端到端验证（输入识别→输出合理性→数据库沉淀）")
+    verify_p.add_argument("--out", default="", help="验证报告保存路径")
+
     args = parser.parse_args(argv)
     if args.command == "init-db":
         store = _open_store()
@@ -272,6 +289,8 @@ def main(argv: list[str] | None = None) -> None:
         _parse_file(args.path, args.engine, args.out)
     elif args.command == "extract":
         _extract_file(args.path, args.engine)
+    elif args.command == "verify":
+        _verify(args.out)
     else:
         parser.print_help()
         sys.exit(1)

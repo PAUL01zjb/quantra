@@ -54,7 +54,33 @@ class PdfPlumberEngine(BaseParser):
                         order += 1
 
                 # 文本按空行分块，短单行视为标题（粗粒度，D1 可调）
-                for raw in re.split(r"\n\s*\n", text.strip()):
+                raw_blocks = re.split(r"\n\s*\n", text.strip())
+                # 整页无空行分隔且首行是短行（常见于研报标题）：拆出标题
+                if len(raw_blocks) == 1 and page_no == 1:
+                    lines = raw_blocks[0].splitlines()
+                    if lines and 0 < len(lines[0].strip()) <= 50:
+                        blocks.append(
+                            DocumentBlock(
+                                block_type="heading",
+                                text=lines[0].strip(),
+                                page=page_no,
+                                order=order,
+                            )
+                        )
+                        order += 1
+                        rest = "\n".join(lines[1:]).strip()
+                        if rest:
+                            blocks.append(
+                                DocumentBlock(
+                                    block_type="paragraph",
+                                    text=re.sub(r"\s+", " ", rest),
+                                    page=page_no,
+                                    order=order,
+                                )
+                            )
+                            order += 1
+                        continue
+                for raw in raw_blocks:
                     line = re.sub(r"\s+", " ", raw).strip()
                     if not line:
                         continue
