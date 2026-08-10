@@ -60,7 +60,8 @@ sequenceDiagram
 
 | 模块 | 职责 | 关键接口 |
 |---|---|---|
-| `ingest/parser` | 解析 MD/TXT/PDF，规则抽取指标与表格 | `parse_document(path) -> Report` |
+| `parsing/` | 解析小框架：输入接口 ParseRequest → 引擎层（pdfplumber/MinerU/Docling 插拔）→ 输出接口 ParseResult | `parse_document(request) -> ParseResult` |
+| `ingest/parser` | （旧版，待迁移）解析 + 规则抽取指标 | `parse_document(path) -> Report` |
 | `storage/db` | 事实库、审计、记忆统一落库 | `upsert_report / audit / memory_append` |
 | `retrieval/chunking` | 标题感知分块、表格保留、重叠窗口 | `chunk_report(report) -> list[Chunk]` |
 | `retrieval/bm25` | 手写 BM25（含中文分词兜底） | `fit(docs) / top_k(query)` |
@@ -90,6 +91,14 @@ sequenceDiagram
 为什么：手写 Schema 会与函数实现漂移；自动生成保证"工具定义"与"工具实现"单一事实源。这也是函数调用底层的核心工程点。
 
 代价：类型注解需要规范（`Optional[str]`、默认值语义需约定），用测试锁定。
+
+### 4.6 解析层 = 接口化流水线，不是"一个解析函数"
+
+决策：`ParseRequest`（输入契约：来源/语言/模式/是否解析表格/页范围/引擎）→ 引擎层（pdfplumber 默认、MinerU/Docling 可选）→ `ParseResult`（输出契约：blocks/markdown/stats/engine）。
+
+为什么：解析方案演进快（CNN 版面检测 → VLM 端到端），接口隔离后换引擎不影响上层；上层（抽取/归档/Agent）只依赖输出契约，可测试、可审计。
+
+代价：多一层抽象；用引擎选择策略（auto → 文本型用 pdfplumber，扫描件切 MinerU）缓解。
 
 ### 4.3 检索 = BM25 起步，向量可插拔
 

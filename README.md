@@ -11,8 +11,9 @@ Quantra 是一个面向 A 股投研场景的开源 Agent 工作台。它把"读�
 
 ## 设计原则（专业 Agent 工程）
 
-- **零低代码、零可视化编排**：不依赖 Dify/Coze/LangFlow，编排循环、工具调用、检索内核全部手写。
-- **不套重型框架**：刻意不用 LangChain/LlamaIndex 包住内部逻辑；先理解每一层，再谈抽象。
+- **零低代码、零可视化编排**：不依赖 Dify/Coze/LangFlow。
+- **拥抱主流框架，讲清每层原理**：编排用 LangGraph、解析用 MinerU/Docling 等行业方案，但每个选型都要能讲清楚原理与 trade-off，框架不是黑盒。
+- **解析层输入/输出接口化**：`ParseRequest → 引擎层（pdfplumber/MinerU/Docling 插拔）→ ParseResult`，上层只依赖输出契约。
 - **函数调用从类型注解生成**：工具 Schema 由 Python 函数签名自动推导，参数校验、错误恢复、超时内建。
 - **编排是状态机**：planning / executing / reviewing 三态，步数与成本预算上限，失败重试与回退。
 - **评测与可观测性内建**：引用覆盖率、金标准回归、每步成本/延迟 trace、审计回放。

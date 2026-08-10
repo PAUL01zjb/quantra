@@ -157,6 +157,31 @@ def _scenario_run(scenario_id: str) -> None:
     runner.close()
 
 
+def _parse_file(path: str, engine: str, out: str) -> None:
+    from quantra.parsing import parse_document
+    from quantra.parsing.interfaces import ParseRequest
+
+    request = ParseRequest(source=path, engine=engine)
+    result = parse_document(request)
+    print(f"=== 解析结果（引擎: {result.engine}）===")
+    print(f"来源: {result.source}")
+    print(f"统计: {result.stats}")
+    print()
+    for block in result.blocks[:15]:
+        prefix = {"heading": "##", "table": "[表]", "paragraph": ""}.get(block.block_type, "")
+        preview = block.text[:100].replace("\n", " ")
+        print(f"  p{block.page} {prefix} {preview}")
+    if len(result.blocks) > 15:
+        print(f"  ... 共 {len(result.blocks)} 个块")
+    if out:
+        from pathlib import Path
+
+        target = Path(out)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(result.markdown, encoding="utf-8")
+        print(f"\nMarkdown 已保存: {target}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="quantra", description="Agentic 研报投研工作台")
     sub = parser.add_subparsers(dest="command")
@@ -183,6 +208,11 @@ def main(argv: list[str] | None = None) -> None:
     scenario_run_p = scenario_sub.add_parser("run", help="运行一个场景")
     scenario_run_p.add_argument("scenario_id")
 
+    parse_p = sub.add_parser("parse", help="文档解析（输入接口→引擎→输出接口）")
+    parse_p.add_argument("path")
+    parse_p.add_argument("--engine", default="auto", help="auto/pdfplumber/mineru/docling")
+    parse_p.add_argument("--out", default="", help="保存 Markdown 到指定路径")
+
     args = parser.parse_args(argv)
     if args.command == "init-db":
         store = _open_store()
@@ -206,6 +236,8 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print("用法: python -m quantra.app.cli scenario {list|run <id>}")
             sys.exit(1)
+    elif args.command == "parse":
+        _parse_file(args.path, args.engine, args.out)
     else:
         parser.print_help()
         sys.exit(1)

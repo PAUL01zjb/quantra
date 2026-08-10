@@ -8,7 +8,7 @@
 
 ## Architecture Decisions
 
-1. **不锁死框架**：Agent 编排手写 Plan-and-Execute（理解底层原理），检索层 BM25 手写（学习价值），后续可插拔向量/重排/LLM 客户端。这与"两年规划"里"从会用 Agent 到理解 Agent 底层"的目标一致。
+1. **拥抱主流框架，讲清每层原理**：编排用 LangGraph（状态机/人机协同/持久化）、解析用 MinerU/Docling、检索用 hybrid retriever + rerank、评测用 RAGAS；每个选型都要能讲清楚原理与 trade-off，框架不是黑盒。
 2. **专业 Agent 工程**：零低代码/可视化编排（无 Dify/Coze/LangFlow）；工具 Schema 由函数类型注解自动生成；编排是带预算/重试/回退的状态机；评测、可观测性、审计从第一天就是数据。
 3. **确定性优先**：指标抽取先用规则（数字可复现），LLM 抽取作为第二通道交叉校验；关键路径不依赖 LLM 也能跑通（dry-run 模式）。
 4. **SQLite 单文件**：事实库、审计日志、记忆层同库，零部署成本，方便周内随时迁移到任何环境。
