@@ -17,6 +17,12 @@
 - [x] Task 5: BM25 + 混合检索 + 问数路由（结构化优先/覆盖度降级）
 - [ ] Task 6: 会话记忆层（结论/假设持久化）
 
+## Phase 1.5：入库管道 / 记忆 / LLM 抽取
+
+- [x] Task 6a: 入库管道 ingest-doc（打标 + 双写）
+- [x] Task 6b: 跨对话记忆（confirm/correct/memories + 注入）
+- [x] Task 6c: LLM 抽取通道（schema-guided + 词典校验）
+
 ## Phase 2：Agent 编排 + 成本路由 + 审计（D4–D5）
 
 - [ ] Task 7: 工具 Schema 从函数类型注解自动生成 + 参数校验/错误恢复/超时

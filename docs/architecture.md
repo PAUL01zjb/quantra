@@ -179,6 +179,31 @@ flowchart TB
 `mineru_mapper` 是纯函数（离线可测），对 MinerU 版本间结构差异做"宽容映射"，
 结构不认识时兜底从 markdown 重新分块，保证输出契约稳定。
 
+### 4.8 入库管道与标签体系
+
+业务只需上传文档：入库管道自动完成 解析 → 抽取 → 打标 → 双写。
+标签字段：ticker / company / industry / report_type / report_date / broker / source，
+作为检索预过滤与 BI 分组的元数据。原始文档登记表 `raw_doc`（哈希 + 标签 JSON），
+生产版底层为多模态/对象存储（PDF 原文保留，溯源与全文阅读用）。
+
+### 4.9 跨对话记忆（四类）
+
+| 类型 | 内容 | 置信度 | 入口 |
+|---|---|---|---|
+| fact | 交易员确认过的指标事实 | 0.95 | 确认台确认动作 |
+| conclusion | 每次业务问答结论（带来源） | 0.90 | 问答结束自动沉淀 |
+| correction | 交易员修正（如"净息差单位用%"） | 1.00 | 修正动作 |
+| preference | 交易员偏好 | 0.80 | 行为统计（预留） |
+
+实现：`memory` 表（dedupe 唯一索引 + 版本更新），`inject_memory` 按公司/指标/分词多路检索注入。
+生产版：LangGraph 人工确认节点 + Mem0 / LangGraph Store / TencentDB-Agent-Memory。
+
+### 4.10 LLM 抽取双通道（生产版）
+
+`extraction/llm_extractor.py`：schema-guided LLM 按输出契约抽取 JSON，
+规则词典（行业指标）做校验归一化——LLM 抽取 + 规则校验双通道。
+未配置 API Key 时入库管道自动回退规则通道（学习版链路不受影响）。
+
 ## 5. 输出格式提案（待用户确认）
 
 业务目标：**交易员快速确认研报信息 + 沉淀可查询数据库**。

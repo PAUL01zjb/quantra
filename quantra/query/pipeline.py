@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from quantra.memory.extractor import inject_memory
 from quantra.query.channels import query_docs, query_facts, query_risks
 from quantra.query.router import classify
 from quantra.retrieval.hybrid import HybridRetriever
@@ -19,6 +20,7 @@ class QueryAnswer:
     answer: str
     citations: list[str] = field(default_factory=list)
     evidence: list[dict] = field(default_factory=list)
+    memories: list[dict] = field(default_factory=list)
 
 
 def _render_facts(question: str, facts: dict, decision) -> str:
@@ -59,6 +61,7 @@ def ask(
     session: str = "cli",
 ) -> QueryAnswer:
     decision = classify(question, store)
+    memories = inject_memory(question, store)
     store.audit(question, f"ask intent={decision.intent} metric={decision.metric}", status="ok")
 
     if decision.intent == "fact":
@@ -73,6 +76,7 @@ def ask(
                 answer=answer,
                 citations=facts["citations"],
                 evidence=facts["rows"][:20],
+                memories=memories,
             )
         # 覆盖度降级：结构化未命中 → 文档通道
         docs = query_docs(question, decision, retriever, store)
@@ -85,6 +89,7 @@ def ask(
             answer=answer,
             citations=docs["citations"],
             evidence=docs["chunks"][:20],
+            memories=memories,
         )
 
     docs = query_docs(question, decision, retriever, store)
@@ -98,4 +103,5 @@ def ask(
         answer=answer,
         citations=docs["citations"],
         evidence=docs["chunks"][:20],
+        memories=memories,
     )

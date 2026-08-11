@@ -37,6 +37,12 @@
 - [x] Task 5: BM25 索引与混合检索 + 问数路由层（SQL-first / RAG-fallback）
 - [ ] Task 6: 记忆层分层（研究结论/待验证假设/失败经验），跨会话可查、可去重
 
+### Phase 1.5：入库管道 / 记忆 / LLM 抽取（2026-08-11 追加）
+
+- [x] Task 6a: 入库管道（ingest-doc：解析→抽取→打标→双写 raw_doc + 结构化）
+- [x] Task 6b: 跨对话记忆（confirm 确认即记忆 / correct 修正记忆 / memories 查看 / 注入）
+- [x] Task 6c: LLM 抽取通道（schema-guided + 词典校验，无 Key 回退规则）
+
 专业深度：检索不是"调 API"，而是能讲清楚分块为什么这样切、BM25 参数对召回的影响、
 后续向量接入后 RRF 怎么融合；记忆层按"episodic / semantic"分层设计。
 

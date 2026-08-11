@@ -237,11 +237,79 @@ def _ask(question: str) -> None:
     answer = ask(question, store, retriever)
     print(answer.answer)
     print()
+    if answer.memories:
+        print("[记忆提示]")
+        for memory in answer.memories[:3]:
+            tag = {"fact": "已确认事实", "conclusion": "历史结论", "correction": "修正记录"}.get(
+                memory["kind"], memory["kind"]
+            )
+            print(f"  - [{tag}] {memory['content'][:100]}")
+        print()
     print(f"[路由] 意图={answer.intent} ｜ 通道={answer.channel} ｜ 降级={answer.fallback}")
     if answer.citations:
         print("[引用]")
         for citation in answer.citations[:5]:
             print(f"  - {citation}")
+    store.close()
+
+
+def _ingest_doc(path: str, engine: str) -> None:
+    from quantra.ingestion.pipeline import IngestionPipeline
+
+    pipeline = IngestionPipeline()
+    result = pipeline.ingest(path, engine=engine)
+    print(f"=== 入库完成（{result['method']}）===")
+    print(f"原始文档登记: {result['doc_id']}")
+    print(f"标签: {result['tags']}")
+    print(
+        f"归档: report={result['report_id'][:8]} metrics={result['metrics']} "
+        f"chunks={result['chunks']} risks={result['risks']}"
+    )
+    pipeline.close()
+
+
+def _confirm(question: str) -> None:
+    from quantra.memory.extractor import confirm_facts
+    from quantra.query.pipeline import ask
+    from quantra.storage.archive import ArchiveStore
+
+    store = ArchiveStore(get_settings().db_path)
+    chunks = store.load_chunks()
+    retriever = HybridRetriever(chunks) if chunks else None
+    if retriever is None:
+        store.close()
+        raise SystemExit("知识库为空：请先 ingest-doc 导入研报。")
+    answer = ask(question, store, retriever)
+    memory_ids = confirm_facts(question, answer, store)
+    print(answer.answer)
+    print()
+    print(f"[确认] 已写入 {len(memory_ids)} 条记忆（fact + conclusion）")
+    store.close()
+
+
+def _correct(question: str, correction: str) -> None:
+    from quantra.memory.extractor import correct_answer
+    from quantra.storage.archive import ArchiveStore
+
+    store = ArchiveStore(get_settings().db_path)
+    memory_id = correct_answer(question, correction, store)
+    print(f"[修正] 已写入记忆: {memory_id}")
+    print(f"  问题: {question}")
+    print(f"  修正: {correction}")
+    store.close()
+
+
+def _memories(keyword: str) -> None:
+    from quantra.storage.archive import ArchiveStore
+
+    store = ArchiveStore(get_settings().db_path)
+    rows = store.memory_search(keyword) if keyword else store.list_memories(limit=30)
+    if not rows:
+        print("暂无记忆。可用 confirm/correct 产生记忆。")
+    kind_label = {"fact": "事实", "conclusion": "结论", "correction": "修正", "preference": "偏好"}
+    for row in rows:
+        label = kind_label.get(row["kind"], row["kind"])
+        print(f"[{label}][{row['confidence']:.2f}] {row['content'][:120]}")
     store.close()
 
 
@@ -286,6 +354,20 @@ def main(argv: list[str] | None = None) -> None:
     ask_p = sub.add_parser("ask", help="业务问数（路由：结构化优先，缺失自动降级文档）")
     ask_p.add_argument("question")
 
+    ingest_doc_p = sub.add_parser("ingest-doc", help="入库管道：解析→抽取→打标→双写（结构化 + 原始文档登记）")
+    ingest_doc_p.add_argument("path")
+    ingest_doc_p.add_argument("--engine", default="auto")
+
+    confirm_p = sub.add_parser("confirm", help="确认答案并写入记忆（确认即记忆）")
+    confirm_p.add_argument("question")
+
+    correct_p = sub.add_parser("correct", help="记录交易员修正（修正记忆）")
+    correct_p.add_argument("question")
+    correct_p.add_argument("correction")
+
+    memories_p = sub.add_parser("memories", help="查看跨对话记忆")
+    memories_p.add_argument("keyword", nargs="?", default="")
+
     args = parser.parse_args(argv)
     if args.command == "init-db":
         store = _open_store()
@@ -317,6 +399,14 @@ def main(argv: list[str] | None = None) -> None:
         _verify(args.out)
     elif args.command == "ask":
         _ask(args.question)
+    elif args.command == "ingest-doc":
+        _ingest_doc(args.path, args.engine)
+    elif args.command == "confirm":
+        _confirm(args.question)
+    elif args.command == "correct":
+        _correct(args.question, args.correction)
+    elif args.command == "memories":
+        _memories(args.keyword)
     else:
         parser.print_help()
         sys.exit(1)

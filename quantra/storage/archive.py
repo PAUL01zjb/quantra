@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -129,6 +130,75 @@ class ArchiveStore:
                 ],
             )
         return len(result.risks)
+
+    # ---------- 原始文档登记（多模态/对象存储层的元数据索引） ----------
+    def register_raw_doc(self, source_path: str, doc_hash: str, tags: dict | None = None) -> str:
+        doc_id = _hash(doc_hash)
+        file_size = Path(source_path).stat().st_size if Path(source_path).exists() else 0
+        with self.conn:
+            self.conn.execute(
+                """INSERT OR REPLACE INTO raw_doc
+                   (doc_id, source_path, doc_hash, file_size, tags, registered_at)
+                   VALUES (?,?,?,?,?,?)""",
+                (doc_id, source_path, doc_hash, file_size, json.dumps(tags or {}, ensure_ascii=False), time.time()),
+            )
+        return doc_id
+
+    def get_raw_docs(self, tag_key: str | None = None, tag_value: str | None = None) -> list[dict]:
+        rows = self.conn.execute("SELECT doc_id, source_path, doc_hash, file_size, tags, registered_at FROM raw_doc ORDER BY registered_at DESC").fetchall()
+        docs = []
+        for row in rows:
+            doc = dict(row)
+            doc["tags"] = json.loads(doc["tags"] or "{}")
+            if tag_key and tag_value and doc["tags"].get(tag_key) != tag_value:
+                continue
+            docs.append(doc)
+        return docs
+
+    # ---------- 跨对话记忆（四类：fact / conclusion / correction / preference） ----------
+    def memory_upsert(
+        self,
+        kind: str,
+        entity_type: str,
+        entity_id: str,
+        content: str,
+        confidence: float = 0.8,
+        source: str = "",
+    ) -> str:
+        memory_id = _hash(kind, entity_type, entity_id, content)
+        now = time.time()
+        with self.conn:
+            self.conn.execute(
+                """INSERT INTO memory (memory_id, kind, entity_type, entity_id, content, confidence, source, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(kind, entity_type, entity_id, content) DO UPDATE SET
+                     confidence=MAX(memory.confidence, excluded.confidence),
+                     source=excluded.source,
+                     updated_at=excluded.updated_at""",
+                (memory_id, kind, entity_type, entity_id, content, confidence, source, now, now),
+            )
+        return memory_id
+
+    def memory_search(self, query: str, limit: int = 10) -> list[dict]:
+        like = f"%{query}%"
+        rows = self.conn.execute(
+            """SELECT memory_id, kind, entity_type, entity_id, content, confidence, source, updated_at
+               FROM memory
+               WHERE content LIKE ? OR entity_id LIKE ? OR source LIKE ?
+               ORDER BY confidence DESC, updated_at DESC LIMIT ?""",
+            (like, like, like, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_memories(self, kind: str | None = None, limit: int = 50) -> list[dict]:
+        sql = "SELECT memory_id, kind, entity_type, entity_id, content, confidence, source, updated_at FROM memory"
+        params: list = []
+        if kind:
+            sql += " WHERE kind=?"
+            params.append(kind)
+        sql += " ORDER BY updated_at DESC LIMIT ?"
+        params.append(limit)
+        return [dict(r) for r in self.conn.execute(sql, params).fetchall()]
 
     def audit(self, report_id: str, action: str, detail: str = "", status: str = "ok") -> None:
         with self.conn:

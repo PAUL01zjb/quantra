@@ -75,4 +75,26 @@ CREATE TABLE IF NOT EXISTS extraction_audit (
     detail TEXT,
     ts REAL
 );
+
+CREATE TABLE IF NOT EXISTS raw_doc (
+    doc_id TEXT PRIMARY KEY,
+    source_path TEXT,
+    doc_hash TEXT,
+    file_size INTEGER,
+    tags TEXT,
+    registered_at REAL
+);
+
+CREATE TABLE IF NOT EXISTS memory (
+    memory_id TEXT PRIMARY KEY,
+    kind TEXT,
+    entity_type TEXT,
+    entity_id TEXT,
+    content TEXT,
+    confidence REAL,
+    source TEXT,
+    created_at REAL,
+    updated_at REAL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_dedupe ON memory(kind, entity_type, entity_id, content);
 """

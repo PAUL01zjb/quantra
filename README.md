@@ -30,6 +30,12 @@ flowchart LR
 | 评测 | RAGAS + 自建引用硬规则 | 引用覆盖率、幻觉守卫、金标准回归 |
 | 可观测 | Langfuse（自托管） | trace + 成本 + 评测，数据不出网 |
 
+### 三大生产能力
+
+1. **入库管道（业务只上传，剩下交给系统）**：上传 → MinerU 解析 → schema-guided LLM 抽取（规则校验）→ 自动打标（ticker/行业/报告类型/日期/机构）→ **双写**：结构化事实表（供 BI/精确查询）+ 原始文档库（多模态/对象存储，供溯源与全文阅读）。
+2. **确认台 + 跨对话记忆**：交易员对答案点"确认"= 直接写入事实记忆（最高置信）；修正动作写入修正记忆；新对话按公司/指标注入相关记忆。生产版由 LangGraph 人工确认节点 + Mem0/LangGraph Store 实现。
+3. **问数路由（SQL-first / RAG-fallback）**：规则路由 → 结构化优先 → 覆盖度检查 → 缺失自动降级文档检索 → 轻量判别 Agent 处理歧义。
+
 ## 数据模型（输出契约）
 
 **公司主维度 + 指标事实复合键**（已确认方案）：
@@ -56,7 +62,11 @@ python -m quantra.app.cli parse data/samples/示例-消费龙头2025年报点评
 python -m quantra.app.cli extract data/samples/示例-消费龙头2025年报点评.pdf
 python -m quantra.app.cli verify                       # 端到端验证（输入识别→输出合理性→数据库沉淀）
 python -m quantra.app.cli scenario run analyst-compare # 业务场景模拟
+python -m quantra.app.cli ingest-doc data/samples/示例-消费龙头2025年报点评.md  # 入库管道（打标+双写）
 python -m quantra.app.cli ask "消费龙头2025年毛利率是多少？"  # 业务问数（路由：结构化优先，缺失自动降级）
+python -m quantra.app.cli confirm "消费龙头2025年毛利率是多少？"  # 确认即记忆
+python -m quantra.app.cli correct "净息差单位" "净息差统一用%表示"   # 修正记忆
+python -m quantra.app.cli memories                             # 查看跨对话记忆
 python -m quantra.app.cli audit-log --limit 20
 ```
 
@@ -73,9 +83,13 @@ python -m quantra.app.cli parse 研报.pdf --engine mineru --out /tmp/out.md
 quantra/
 ├── parsing/          解析小框架：ParseRequest → 引擎层（pdfplumber/MinerU/Docling）→ ParseResult
 ├── extraction/       抽取层：ParseResult → ExtractionResult（指标词典/规则抽取，LLM 通道预留）
+│   └── llm_extractor.py  生产版 schema-guided LLM 抽取（词典校验，需 API Key）
 ├── storage/          归档层：schema v2（company/report/metric_fact/...）+ 公司卡片聚合
+│   └── archive.py    原始文档登记（raw_doc + 复合标签）+ 记忆表（memory）
 ├── retrieval/        检索层：分块 + BM25 + 混合检索（向量接口预留）
 ├── query/            问数路由层：规则路由 → 双通道查询 → 覆盖度降级（SQL-first / RAG-fallback）
+├── memory/           跨对话记忆：确认即记忆 / 修正记忆 / 上下文注入
+├── ingestion/        入库管道：解析→抽取→打标→双写（结构化 + 原始文档登记）
 ├── agent/            编排层：工具/路由/审计 + Plan-and-Execute（LangGraph 迁移预留）
 ├── eval/             评测层：引用覆盖率、幻觉守卫
 ├── scenarios/        业务场景模拟器（基金经理助理 / 风控评审）
