@@ -16,9 +16,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-demo = ["streamlit>=1.36"]
 eval = ["pytest>=8.0"]
 cn = ["jieba>=0.42"]
+
+[project.scripts]
+quantra = "quantra.app.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["quantra*"]

@@ -313,6 +313,35 @@ def _memories(keyword: str) -> None:
     store.close()
 
 
+def _setup() -> None:
+    import getpass
+
+    from quantra.setup_wizard import run_setup
+
+    print("⚙️  Quantra 配置向导（密钥只写入本地 .env，权限 600，不会上传）")
+    print("──────────────────────────────────────────────")
+    base_url = input("LLM 接口 Base URL [https://api.deepseek.com/v1]: ").strip() or "https://api.deepseek.com/v1"
+    api_key = getpass.getpass("LLM API Key（可留空，留空则 dry-run 模式）: ").strip()
+    db_path = input("数据库路径 [data/quantra.db]: ").strip() or "data/quantra.db"
+
+    results = run_setup(base_url, api_key, db_path, ingest_samples=True, run_verify=True)
+    print("──────────────────────────────────────────────")
+    print(f"✅ 配置完成")
+    print(f"   .env: {results['env']}（权限 600）")
+    print(f"   数据库: {results['db']}")
+    if results.get("samples"):
+        print(f"   样例导入: {len(results['samples'])} 份研报")
+    if results.get("verify_passed"):
+        print(f"   端到端验证: ✅ {results['verify_checks']} 项通过")
+    print("下一步：quantra ui 打开主界面，或 quantra ask \"问题\"")
+
+
+def _ui(port: int, host: str) -> None:
+    from quantra.app.server import serve
+
+    serve(host=host, port=port)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="quantra", description="Agentic 研报投研工作台")
     sub = parser.add_subparsers(dest="command")
@@ -368,6 +397,12 @@ def main(argv: list[str] | None = None) -> None:
     memories_p = sub.add_parser("memories", help="查看跨对话记忆")
     memories_p.add_argument("keyword", nargs="?", default="")
 
+    sub.add_parser("setup", help="交互式配置向导（模型接口/数据库路径，密钥写入本地 .env）")
+
+    ui_p = sub.add_parser("ui", help="打开本地主界面（零依赖 Web UI）")
+    ui_p.add_argument("--host", default="127.0.0.1")
+    ui_p.add_argument("--port", type=int, default=8000)
+
     args = parser.parse_args(argv)
     if args.command == "init-db":
         store = _open_store()
@@ -407,6 +442,10 @@ def main(argv: list[str] | None = None) -> None:
         _correct(args.question, args.correction)
     elif args.command == "memories":
         _memories(args.keyword)
+    elif args.command == "setup":
+        _setup()
+    elif args.command == "ui":
+        _ui(args.port, args.host)
     else:
         parser.print_help()
         sys.exit(1)

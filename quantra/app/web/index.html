@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quantra · 研报投研工作台</title>
+  <style>
+    :root {
+      --bg: #f6f7fb; --card: #ffffff; --border: #e5e7eb; --text: #1f2937; --muted: #6b7280;
+      --accent: #2563eb; --accent-soft: #eff6ff; --ok: #059669; --warn: #d97706; --bad: #dc2626;
+      --radius: 12px; --shadow: 0 1px 3px rgba(16,24,40,.08), 0 1px 2px rgba(16,24,40,.04);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+           background: var(--bg); color: var(--text); }
+    header { display: flex; align-items: center; gap: 12px; padding: 14px 24px;
+             background: var(--card); border-bottom: 1px solid var(--border); }
+    .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--accent);
+            color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; }
+    header h1 { font-size: 17px; }
+    header .sub { color: var(--muted); font-size: 12px; margin-left: 8px; }
+    nav { display: flex; gap: 4px; padding: 10px 24px 0; }
+    nav button { border: none; background: transparent; padding: 9px 16px; border-radius: 8px 8px 0 0;
+                 font-size: 14px; color: var(--muted); cursor: pointer; font-weight: 500; }
+    nav button.active { background: var(--card); color: var(--accent); box-shadow: var(--shadow); }
+    main { padding: 18px 24px 40px; max-width: 1100px; margin: 0 auto; }
+    .panel { display: none; } .panel.active { display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 16px 18px; box-shadow: var(--shadow); }
+    .stat .num { font-size: 26px; font-weight: 700; color: var(--accent); }
+    .stat .label { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+            box-shadow: var(--shadow); padding: 18px; margin-bottom: 14px; }
+    .card h3 { font-size: 15px; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; background: #fafafa; }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 500; }
+    .b-fact { background: #ecfdf5; color: var(--ok); } .b-conclusion { background: var(--accent-soft); color: var(--accent); }
+    .b-correction { background: #fffbeb; color: var(--warn); } .b-other { background: #f3f4f6; color: var(--muted); }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 6px; background: #f3f4f6;
+           color: var(--muted); font-size: 12px; margin: 2px 4px 2px 0; }
+    input[type=text], textarea, select { width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+           border-radius: 9px; font-size: 14px; font-family: inherit; }
+    button.primary { background: var(--accent); color: #fff; border: none; padding: 10px 18px;
+           border-radius: 9px; font-size: 14px; cursor: pointer; font-weight: 500; }
+    button.primary:hover { opacity: .92; }
+    .chat-item { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+           padding: 16px; margin-bottom: 12px; box-shadow: var(--shadow); }
+    .chat-item .q { font-weight: 600; margin-bottom: 8px; }
+    .chat-item .a { white-space: pre-wrap; font-size: 14px; line-height: 1.7; }
+    .meta { color: var(--muted); font-size: 12px; margin-top: 8px; }
+    .cites { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .drop { border: 2px dashed var(--border); border-radius: var(--radius); padding: 36px; text-align: center;
+            color: var(--muted); cursor: pointer; background: var(--card); }
+    .drop.drag { border-color: var(--accent); background: var(--accent-soft); }
+    .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+    .toast { position: fixed; bottom: 24px; right: 24px; background: #111827; color: #fff; padding: 12px 18px;
+             border-radius: 10px; font-size: 13px; opacity: 0; transition: opacity .25s; z-index: 99; }
+    .toast.show { opacity: 1; }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .grow { flex: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">Q</div>
+    <h1>Quantra</h1><span class="sub">Agentic 研报投研工作台</span>
+  </header>
+  <nav id="nav">
+    <button data-panel="overview" class="active">总览</button>
+    <button data-panel="kb">知识库</button>
+    <button data-panel="ask">问数</button>
+    <button data-panel="memory">记忆</button>
+    <button data-panel="upload">上传研报</button>
+  </nav>
+  <main>
+    <section id="panel-overview" class="panel active">
+      <div class="cards" id="statCards"></div>
+      <div class="card"><h3>最近入库的原始文档</h3><div id="rawDocs"></div></div>
+    </section>
+
+    <section id="panel-kb" class="panel">
+      <div class="card">
+        <h3>选择公司</h3>
+        <select id="companySelect"></select>
+      </div>
+      <div id="companyCard"></div>
+    </section>
+
+    <section id="panel-ask" class="panel">
+      <div class="card">
+        <h3>向研报知识库提问（结构化优先，缺失自动降级文档检索）</h3>
+        <div class="row">
+          <input type="text" id="askInput" class="grow" placeholder="例如：招商银行2025年净息差是多少？">
+          <button class="primary" onclick="doAsk()">提问</button>
+        </div>
+      </div>
+      <div id="chatList"></div>
+    </section>
+
+    <section id="panel-memory" class="panel">
+      <div class="card">
+        <div class="row">
+          <input type="text" id="memoryKeyword" class="grow" placeholder="搜索记忆（留空显示全部）">
+          <button class="primary" onclick="loadMemories()">搜索</button>
+        </div>
+      </div>
+      <div id="memoryList"></div>
+    </section>
+
+    <section id="panel-upload" class="panel">
+      <div class="drop" id="drop">
+        <p style="font-size:16px; margin-bottom:6px;">拖拽研报到这里，或点击选择文件</p>
+        <p style="font-size:13px;">支持 PDF / Markdown / TXT，自动解析、抽取、打标、双写入库</p>
+        <input type="file" id="fileInput" accept=".pdf,.md,.txt" style="display:none">
+      </div>
+      <div id="ingestResult"></div>
+    </section>
+  </main>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const KIND_LABEL = { fact: ["已确认事实", "b-fact"], conclusion: ["历史结论", "b-conclusion"], correction: ["修正记录", "b-correction"], preference: ["偏好", "b-other"] };
+
+    async function api(path, opts) {
+      const res = await fetch(path, opts);
+      return res.json();
+    }
+    function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show");
+      setTimeout(() => t.classList.remove("show"), 2400); }
+    function esc(s) { return (s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+    document.querySelectorAll("#nav button").forEach(b => b.onclick = () => {
+      document.querySelectorAll("#nav button").forEach(x => x.classList.remove("active"));
+      document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+      b.classList.add("active"); $("panel-" + b.dataset.panel).classList.add("active");
+    });
+
+    // ---------- 总览 ----------
+    async function loadOverview() {
+      const d = await api("/api/overview");
+      const stats = [
+        ["companies", "公司"], ["reports", "研报"], ["metrics", "指标事实"],
+        ["chunks", "原文块"], ["memories", "记忆"], ["raw_docs", "原始文档"]
+      ];
+      $("statCards").innerHTML = stats.map(([k, label]) =>
+        `<div class="stat"><div class="num">${d[k] ?? 0}</div><div class="label">${label}</div></div>`).join("");
+      $("rawDocs").innerHTML = (d.raw_docs || []).length
+        ? `<table><tr><th>文件</th><th>公司</th><th>类型</th><th>机构</th><th>ticker</th></tr>` +
+          d.raw_docs.slice(0, 8).map(x =>
+            `<tr><td>${esc(x.source_path.split("/").pop())}</td><td>${esc(x.tags.company || "-")}</td>` +
+            `<td>${esc(x.tags.report_type || "-")}</td><td>${esc(x.tags.broker || "-")}</td>` +
+            `<td>${esc(x.tags.ticker || "-")}</td></tr>`).join("") + `</table>`
+        : `<div class="empty">还没有入库文档，去「上传研报」试试</div>`;
+    }
+
+    // ---------- 知识库 ----------
+    async function loadCompanies() {
+      const d = await api("/api/companies");
+      const sel = $("companySelect");
+      sel.innerHTML = `<option value="">选择公司...</option>` +
+        (d.companies || []).map(c => `<option value="${c.company_id}">${esc(c.name)}${c.ticker ? " (" + c.ticker + ")" : ""} · ${c.reports}份研报</option>`).join("");
+      if (d.companies && d.companies[0]) { sel.value = d.companies[0].company_id; showCompany(d.companies[0].company_id); }
+      sel.onchange = () => showCompany(sel.value);
+    }
+    async function showCompany(id) {
+      if (!id) return;
+      const d = await api("/api/company?company_id=" + encodeURIComponent(id));
+      const c = d.card || {};
+      const company = c.company || {};
+      let html = `<div class="card"><h3>${esc(company.name)}${company.ticker ? "（" + esc(company.ticker) + "）" : ""}</h3>`;
+      html += (c.reports || []).map(r => `<span class="tag">${esc(r.broker || "-")} · ${esc(r.report_date || "")}</span>`).join("");
+      html += `</div>`;
+      html += `<div class="card"><h3>指标</h3>`;
+      const metrics = c.metrics || {};
+      const names = Object.keys(metrics);
+      if (!names.length) { html += `<div class="empty">暂无结构化指标</div>`; }
+      names.slice(0, 12).forEach(name => {
+        html += `<div style="margin-bottom:8px"><b>${esc(name)}</b>：` +
+          metrics[name].slice(0, 8).map(r => `<span class="tag">${esc(r.period || "?")}=${esc(r.value)}${esc(r.unit || "")}</span>`).join("") + `</div>`;
+      });
+      html += `</div>`;
+      const risks = c.risks || [];
+      if (risks.length) {
+        html += `<div class="card"><h3>风险提示</h3><ul style="padding-left:18px;font-size:13px">` +
+          risks.slice(0, 6).map(r => `<li>${esc(r.risk_text)} <span class="tag">${esc(r.category)}</span></li>`).join("") + `</ul></div>`;
+      }
+      $("companyCard").innerHTML = html;
+    }
+
+    // ---------- 问数 ----------
+    async function doAsk() {
+      const q = $("askInput").value.trim();
+      if (!q) return;
+      const d = await api("/api/ask", { method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ question: q }) });
+      if (d.error) { toast(d.error); return; }
+      let html = `<div class="chat-item"><div class="q">Q：${esc(d.question)}</div><div class="a">${esc(d.answer)}</div>`;
+      html += `<div class="meta">意图=${esc(d.intent)} ｜ 通道=${esc(d.channel)} ｜ 降级=${d.fallback ? "是" : "否"}</div>`;
+      if (d.memories && d.memories.length) {
+        html += `<div class="cites">记忆提示：` + d.memories.slice(0, 2).map(m => esc(m.content.slice(0, 60))).join("；") + `</div>`;
+      }
+      if (d.citations && d.citations.length) {
+        html += `<div class="cites">引用：<br>` + d.citations.slice(0, 4).map(c => "· " + esc(c)).join("<br>") + `</div>`;
+      }
+      html += `<div class="row" style="margin-top:10px"><button class="primary" onclick="doConfirm('${esc(d.question)}')">确认（写入记忆）</button>` +
+        `<button class="primary" style="background:var(--warn)" onclick="doCorrect('${esc(d.question)}')">修正</button></div></div>`;
+      $("chatList").innerHTML = html + $("chatList").innerHTML;
+      $("askInput").value = "";
+    }
+    async function doConfirm(q) {
+      const d = await api("/api/confirm", { method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ question: q }) });
+      toast(d.error || `已写入 ${d.memory_count} 条记忆`);
+      loadMemories();
+    }
+    async function doCorrect(q) {
+      const correction = prompt("请输入修正内容：");
+      if (!correction) return;
+      await api("/api/correct", { method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ question: q, correction }) });
+      toast("修正已写入记忆");
+      loadMemories();
+    }
+
+    // ---------- 记忆 ----------
+    async function loadMemories() {
+      const kw = $("memoryKeyword").value.trim();
+      const d = await api("/api/memories?keyword=" + encodeURIComponent(kw));
+      const rows = d.memories || [];
+      $("memoryList").innerHTML = rows.length ? rows.map(m => {
+        const [label, cls] = KIND_LABEL[m.kind] || [m.kind, "b-other"];
+        return `<div class="chat-item"><div class="row"><span class="badge ${cls}">${label}</span>` +
+          `<span class="meta">置信 ${m.confidence}</span></div>` +
+          `<div class="a" style="margin-top:8px">${esc(m.content)}</div></div>`;
+      }).join("") : `<div class="empty">暂无记忆</div>`;
+    }
+
+    // ---------- 上传 ----------
+    const drop = $("drop");
+    drop.onclick = () => $("fileInput").click();
+    drop.ondragover = e => { e.preventDefault(); drop.classList.add("drag"); };
+    drop.ondragleave = () => drop.classList.remove("drag");
+    drop.ondrop = e => { e.preventDefault(); drop.classList.remove("drag"); uploadFile(e.dataTransfer.files[0]); };
+    $("fileInput").onchange = e => uploadFile(e.target.files[0]);
+    async function uploadFile(file) {
+      if (!file) return;
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = ""; bytes.forEach(b => binary += String.fromCharCode(b));
+      const content_b64 = btoa(binary);
+      toast("正在解析入库...");
+      const d = await api("/api/ingest", { method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ filename: file.name, content_b64 }) });
+      if (d.error) { toast("入库失败：" + d.error); return; }
+      const tags = d.tags || {};
+      $("ingestResult").innerHTML = `<div class="card"><h3>✅ 入库完成（${esc(file.name)}）</h3>` +
+        `<div>${Object.entries(tags).map(([k, v]) => v ? `<span class="tag">${esc(k)}: ${esc(v)}</span>` : "").join("")}</div>` +
+        `<div class="meta" style="margin-top:8px">指标 ${d.metrics} 条 ｜ 原文块 ${d.chunks} ｜ 风险 ${d.risks}</div></div>`;
+      toast("入库完成");
+      loadOverview(); loadCompanies();
+    }
+
+    // 初始化
+    loadOverview(); loadCompanies(); loadMemories();
+  </script>
+</body>
+</html>

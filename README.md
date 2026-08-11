@@ -55,6 +55,19 @@ flowchart LR
 
 本地开发用轻量实现跑通同一条链路：pdfplumber 解析（文本型 PDF）→ 规则抽取 → 归档 → 公司卡片 → 端到端验证。生产组件（MinerU、LLM 抽取、LangGraph）在仓库已预留接口，部署时启用，输出契约不变。
 
+### 一键安装（推荐）
+
+```bash
+git clone https://github.com/PAUL01zjb/quantra.git
+cd quantra
+chmod +x install.sh
+./install.sh          # 虚拟环境 + 安装依赖 + 交互式配置向导
+quantra ui            # 打开主界面
+```
+
+配置向导只问三件事：LLM 接口 Base URL、API Key（可留空，dry-run 模式）、数据库路径。
+**密钥只写入本地 `.env`（权限 600），不上传、不入库、不进 Git。**
+
 ```bash
 cd quantra
 python -m quantra.app.cli init-db
@@ -69,6 +82,16 @@ python -m quantra.app.cli correct "净息差单位" "净息差统一用%表示" 
 python -m quantra.app.cli memories                             # 查看跨对话记忆
 python -m quantra.app.cli audit-log --limit 20
 ```
+
+### 主界面（零依赖 Web UI）
+
+```bash
+quantra ui --port 8000
+# 浏览器打开 http://127.0.0.1:8000
+```
+
+主界面五个面板：总览（统计 + 原始文档）、知识库（公司卡片聚合视图）、
+问数（带引用答案 + 确认即记忆）、记忆（四类记忆检索）、上传研报（拖拽入库自动打标）。
 
 启用生产引擎（部署时）：
 
