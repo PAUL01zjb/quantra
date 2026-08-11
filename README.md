@@ -2,6 +2,11 @@
 
 **Agentic research intelligence platform for equity research reports.**
 
+![CI](https://github.com/PAUL01zjb/quantra/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12-blue)
+![Tests](https://img.shields.io/badge/tests-48%20passed-green)
+
 Quantra turns raw research reports (PDF/MD/TXT) into a queryable, traceable knowledge base:
 multi-format parsing → schema-guided LLM extraction → dual-write storage (structured facts + raw documents)
 → agentic Q&A with citation-level traceability → human-in-the-loop confirmation that feeds a
