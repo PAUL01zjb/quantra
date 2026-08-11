@@ -20,11 +20,11 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-echo "⬇️  安装依赖（pip install -e .）..."
+echo "⬇️  安装依赖（production extras：LangGraph / Qdrant / bge / MinerU / Langfuse）..."
 python -m pip install --upgrade pip >/dev/null
-python -m pip install -e . >/dev/null
+python -m pip install -e ".[production]" >/dev/null
 
-echo "⚙️  运行交互式配置（模型接口 / 数据库路径，密钥只写入本地 .env）..."
+echo "⚙️  运行配置向导（LLM / Embedding / Vector Store / Parser / Observability，密钥只写入本地 .env）..."
 quantra setup
 
 echo ""

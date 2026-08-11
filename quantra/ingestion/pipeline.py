@@ -1,7 +1,7 @@
 """入库管道（业务只需上传文档，剩下的自动完成）。
 
 链路：parse -> extract -> archive（结构化库）-> register raw doc（原始文档层 + 复合标签）。
-学习版标签自动生成：ticker/公司/行业/报告类型/报告日期/机构；生产版由 MinerU + LLM 输出更全。
+标签自动生成：ticker/公司/行业/报告类型/报告日期/机构；MinerU + LLM 通道可输出更全的标签。
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
-"""端到端验证器。
+"""End-to-end verification.
 
-对示例研报跑完整链路（parse -> extract -> archive -> company card），
-与"金标准期望"逐项比对，输出验证报告（markdown）。
+Runs the full pipeline (parse -> extract -> archive -> company card) over sample
+reports and compares against golden expectations, producing a markdown report.
 """
 
 from __future__ import annotations
@@ -240,35 +240,38 @@ class VerificationRunner:
 
 def render_report(result: VerificationResult) -> str:
     lines = [
-        "# Quantra 端到端验证报告",
+        "# Quantra End-to-End Verification Report",
         "",
-        f"- 生成时间：{result.generated_at}",
-        f"- 结论：**{'通过' if result.passed else '未通过'}**（{sum(1 for c in result.checks if c.ok)}/{len(result.checks)} 项检查通过）",
+        f"- Generated: {result.generated_at}",
+        f"- Result: **{'PASS' if result.passed else 'FAIL'}** "
+        f"({sum(1 for c in result.checks if c.ok)}/{len(result.checks)} checks passed)",
         "",
-        "## 检查明细",
+        "## Checks",
         "",
-        "| 检查项 | 结果 | 详情 |",
+        "| Check | Result | Detail |",
         "|---|---|---|",
     ]
     for check in result.checks:
         lines.append(f"| {check.label} | {'✅' if check.ok else '❌'} | {check.detail} |")
 
-    lines += ["", "## 数据库沉淀", ""]
+    lines += ["", "## Database", ""]
     for table, count in result.db_stats.items():
-        lines.append(f"- `{table}`: {count} 行")
+        lines.append(f"- `{table}`: {count} rows")
 
-    lines += ["", "## 公司卡片（聚合视图）", ""]
+    lines += ["", "## Company Cards (aggregated view)", ""]
     for company_id, card in result.company_cards.items():
         if "company" not in card:
             continue
-        lines.append(f"### {card['company']['name']}（{card['company'].get('ticker') or '无 ticker'}）")
+        lines.append(
+            f"### {card['company']['name']} ({card['company'].get('ticker') or 'no ticker'})"
+        )
         lines.append("")
         for metric_name, rows in card["metrics"].items():
             values = ", ".join(f"{r['period']}={r['value']}{r['unit']}" for r in rows[:8])
             lines.append(f"- {metric_name}: {values}")
         risks = "、".join(r["risk_text"] for r in card.get("risks", [])[:5])
         if risks:
-            lines.append(f"- 风险: {risks}")
+            lines.append(f"- risks: {risks}")
         lines.append("")
     return "\n".join(lines)
 

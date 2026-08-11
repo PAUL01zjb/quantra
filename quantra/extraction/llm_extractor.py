@@ -1,7 +1,7 @@
 """生产版抽取：schema-guided LLM（OpenAI 兼容接口）。
 
 设计：LLM 按输出契约抽取 JSON，规则词典做校验归一化（LLM 抽取 + 规则校验双通道）。
-未配置 API Key 时抛出明确错误，由入库管道回退规则通道（学习版链路）。
+未配置 API Key 时抛出明确错误，由入库管道回退规则通道。
 """
 
 from __future__ import annotations

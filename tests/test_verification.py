@@ -13,8 +13,8 @@ class TestVerification(unittest.TestCase):
         )
         self.assertGreaterEqual(len(result.checks), 30)
         report = render_report(result)
-        self.assertIn("端到端验证报告", report)
-        self.assertIn("通过", report)
+        self.assertIn("End-to-End Verification Report", report)
+        self.assertIn("PASS", report)
 
 
 if __name__ == "__main__":

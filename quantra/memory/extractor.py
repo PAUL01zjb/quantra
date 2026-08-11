@@ -1,11 +1,11 @@
-"""记忆抽取器（学习版规则通道）。
+"""Memory extractor (rule channel).
 
 四类记忆：
 - fact       交易员确认过的指标事实（最高置信，确认台入口）
 - conclusion 每次业务问答的结论（带来源）
 - correction 交易员修正（如"不良率单位是 %"）
 - preference 交易员偏好（预留，行为统计）
-生产版由 LLM 从对话记录抽取 + Mem0/LangGraph Store 存储。
+Production: LLM extraction from transcripts + Mem0/LangGraph Store persistence.
 """
 
 from __future__ import annotations

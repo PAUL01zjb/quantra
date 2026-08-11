@@ -30,6 +30,20 @@ class Settings:
     dry_run: bool = True
     db_path: Path = Path("data/quantra.db")
     cost_table: Dict[str, dict] = field(default_factory=lambda: dict(DEFAULT_COST_TABLE))
+    # --- production providers ---
+    embedding_provider: str = "auto"  # auto / openai / bge-m3 / none
+    embedding_model: str = "bge-m3"
+    embedding_api_base: str = ""
+    embedding_api_key: str = ""
+    vector_store: str = "memory"  # memory / qdrant / pgvector
+    vector_store_url: str = ""
+    vector_store_collection: str = "quantra"
+    reranker: str = "none"  # none / bge / cohere
+    parser_engine: str = "auto"  # auto / mineru / docling / pdfplumber
+    observability: str = "none"  # none / langfuse
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
 
 
 def get_settings() -> Settings:
@@ -48,4 +62,17 @@ def get_settings() -> Settings:
         cheap_model=os.environ.get("QUANTRA_CHEAP_MODEL", "deepseek-v4-flash"),
         dry_run=dry_run,
         db_path=Path(db_path),
+        embedding_provider=os.environ.get("QUANTRA_EMBEDDING_PROVIDER", "auto"),
+        embedding_model=os.environ.get("QUANTRA_EMBEDDING_MODEL", "bge-m3"),
+        embedding_api_base=os.environ.get("QUANTRA_EMBEDDING_API_BASE", ""),
+        embedding_api_key=os.environ.get("QUANTRA_EMBEDDING_API_KEY", ""),
+        vector_store=os.environ.get("QUANTRA_VECTOR_STORE", "memory"),
+        vector_store_url=os.environ.get("QUANTRA_VECTOR_STORE_URL", ""),
+        vector_store_collection=os.environ.get("QUANTRA_VECTOR_STORE_COLLECTION", "quantra"),
+        reranker=os.environ.get("QUANTRA_RERANKER", "none"),
+        parser_engine=os.environ.get("QUANTRA_PARSER_ENGINE", "auto"),
+        observability=os.environ.get("QUANTRA_OBSERVABILITY", "none"),
+        langfuse_public_key=os.environ.get("QUANTRA_LANGFUSE_PUBLIC_KEY", ""),
+        langfuse_secret_key=os.environ.get("QUANTRA_LANGFUSE_SECRET_KEY", ""),
+        langfuse_host=os.environ.get("QUANTRA_LANGFUSE_HOST", "https://cloud.langfuse.com"),
     )

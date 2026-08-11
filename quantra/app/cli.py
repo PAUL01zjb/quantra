@@ -1,13 +1,4 @@
-"""CLI 入口。
-
-用法：
-  python -m quantra.app.cli init-db
-  python -m quantra.app.cli ingest <研报路径>...
-  python -m quantra.app.cli query "<问题>"
-  python -m quantra.app.cli demo-memo
-  python -m quantra.app.cli audit-log --limit 20
-  python -m quantra.app.cli eval
-"""
+"""Quantra command-line interface."""
 
 from __future__ import annotations
 
@@ -16,7 +7,7 @@ import sys
 from pathlib import Path
 
 from quantra.config import get_settings
-from quantra.eval.grounding import citation_coverage, hallucination_guard
+from quantra.eval.grounding import citation_coverage
 from quantra.ingest.parser import parse_document
 from quantra.models import Chunk
 from quantra.retrieval.chunking import chunk_report
@@ -25,20 +16,18 @@ from quantra.storage.db import Store
 
 
 def _open_store() -> Store:
-    settings = get_settings()
-    return Store(settings.db_path)
+    return Store(get_settings().db_path)
 
 
 def _index(store: Store) -> HybridRetriever:
     chunks = store.load_chunks()
     if not chunks:
-        raise SystemExit("知识库为空：请先运行 ingest 导入研报。")
+        raise SystemExit("Knowledge base is empty: run ingest first.")
     return HybridRetriever(chunks)
 
 
 def _ingest(paths: list[str]) -> None:
     store = _open_store()
-    settings = get_settings()
     all_chunks: list[Chunk] = []
     for path in paths:
         report = parse_document(path)
@@ -46,7 +35,7 @@ def _ingest(paths: list[str]) -> None:
         chunks = chunk_report(report)
         all_chunks.extend(chunks)
         store.audit("ingest", f"{path} -> {rid}", status="ok")
-        print(f"[ingest] {Path(path).name}: {len(report.metrics)} 个指标, {len(chunks)} 个分块")
+        print(f"[ingest] {Path(path).name}: {len(report.metrics)} metrics, {len(chunks)} chunks")
         for metric in report.metrics[:10]:
             print(f"    - {metric.name} {metric.value}{metric.unit} ({metric.period or '?'})")
     store.store_chunks(all_chunks)
@@ -63,16 +52,19 @@ def _query(question: str, verbose: bool = False) -> None:
     result = agent.run(question)
     print(result.memo)
     print()
-    print(f"[模型] {result.model_used} ｜ [预估成本] ¥{result.cost_yuan:.4f} ｜ [dry-run] {result.dry_run}")
+    print(
+        f"[model] {result.model_used} | [est. cost] ¥{result.cost_yuan:.4f} "
+        f"| [dry-run] {result.dry_run}"
+    )
     if verbose:
-        print("\n[执行轨迹]")
+        print("\n[execution trace]")
         for step in result.steps:
             print(f"  {step.index}. {step.action}")
             if step.args:
-                print(f"     参数: {step.args}")
+                print(f"     args: {step.args}")
     evidence = [c["text"] for c in agent.tools.search_reports(question)["citations"]]
     report = citation_coverage(result.memo, evidence)
-    print(f"\n[引用覆盖率] {report['coverage']:.0%}（{report['supported']}/{report['total']} 句）")
+    print(f"\n[citation coverage] {report['coverage']:.0%} ({report['supported']}/{report['total']} sentences)")
     store.close()
 
 
@@ -80,12 +72,12 @@ def _demo_memo() -> None:
     sample_dir = Path(__file__).resolve().parents[2] / "data" / "samples"
     sample = sample_dir / "示例-消费龙头2025年报点评.md"
     if not sample.exists():
-        raise SystemExit(f"未找到示例研报: {sample}")
-    print("=== 1/3 导入示例研报 ===")
+        raise SystemExit(f"Sample report not found: {sample}")
+    print("=== 1/3 Ingest sample report ===")
     _ingest([str(sample)])
-    print("\n=== 2/3 执行 Agent 问答（dry-run） ===")
+    print("\n=== 2/3 Agent Q&A (deterministic mode) ===")
     _query("华泰证券对这家消费龙头2025年毛利率怎么看？趋势如何？", verbose=True)
-    print("\n=== 3/3 审计回放 ===")
+    print("\n=== 3/3 Audit replay ===")
     store = _open_store()
     for row in store.audit_log(limit=8):
         print(f"  #{row['id']} {row['action']} | cost={row['cost']} | status={row['status']}")
@@ -112,13 +104,12 @@ def _eval_run() -> None:
     total = {"total": 0, "supported": 0}
     for q in questions:
         evidence = [c["text"] for c in retriever.search(q, k=6)]
-        # 以证据为基准构造"参考答案"，评测引用覆盖率
         memo = "；".join(s[:40] for s in evidence[:3]) + "。"
         report = citation_coverage(memo, evidence)
         total["total"] += report["total"]
         total["supported"] += report["supported"]
-        print(f"[eval] {q[:20]}... 覆盖率 {report['coverage']:.0%}")
-    print(f"\n[eval] 汇总覆盖率 {total['supported'] / max(1, total['total']):.0%}")
+        print(f"[eval] {q[:20]}... coverage {report['coverage']:.0%}")
+    print(f"\n[eval] overall coverage {total['supported'] / max(1, total['total']):.0%}")
     store.close()
 
 
@@ -127,8 +118,8 @@ def _scenario_list() -> None:
 
     for scenario in list_scenarios():
         print(f"[{scenario.id}] {scenario.title}")
-        print(f"    角色: {scenario.role}")
-        print(f"    业务任务: {scenario.business_task}")
+        print(f"    role: {scenario.role}")
+        print(f"    task: {scenario.business_task}")
         print()
 
 
@@ -137,23 +128,26 @@ def _scenario_run(scenario_id: str) -> None:
 
     runner = ScenarioRunner(session="cli")
     report = runner.run(scenario_id, save_dir="data/scenario_reports")
-    print(f"=== 场景: {report['title']} ===")
-    print(f"角色: {report['role']}")
-    print(f"业务任务: {report['business_task']}")
-    print(f"输入研报: {', '.join(report['reports'])}")
+    print(f"=== Scenario: {report['title']} ===")
+    print(f"role: {report['role']}")
+    print(f"task: {report['business_task']}")
+    print(f"reports: {', '.join(report['reports'])}")
     print()
     for item in report["items"]:
-        print(f"--- 问题: {item['question']}")
+        print(f"--- Q: {item['question']}")
         print(item["memo"])
-        print(f"[模型] {item['model']} ｜ [成本] ¥{item['cost_yuan']:.4f} ｜ "
-              f"[引用覆盖率] {item['coverage']['coverage']:.0%} ｜ "
-              f"[步骤] {len(item['steps'])}")
+        print(
+            f"[model] {item['model']} | [cost] ¥{item['cost_yuan']:.4f} | "
+            f"[coverage] {item['coverage']['coverage']:.0%} | [steps] {len(item['steps'])}"
+        )
         print()
     agg = report["aggregate"]
-    print(f"=== 汇总: 平均引用覆盖率 {agg['avg_coverage']:.0%} ｜ "
-          f"总成本 ¥{agg['total_cost_yuan']:.4f} ｜ 总步骤 {agg['total_steps']}")
-    print(f"验收标准: {report['success_criteria']}")
-    print(f"场景报告已保存: data/scenario_reports/{report['scenario_id']}.json")
+    print(
+        f"=== Summary: avg coverage {agg['avg_coverage']:.0%} | "
+        f"total cost ¥{agg['total_cost_yuan']:.4f} | total steps {agg['total_steps']}"
+    )
+    print(f"success criteria: {report['success_criteria']}")
+    print(f"report saved: data/scenario_reports/{report['scenario_id']}.json")
     runner.close()
 
 
@@ -163,23 +157,21 @@ def _parse_file(path: str, engine: str, out: str) -> None:
 
     request = ParseRequest(source=path, engine=engine)
     result = parse_document(request)
-    print(f"=== 解析结果（引擎: {result.engine}）===")
-    print(f"来源: {result.source}")
-    print(f"统计: {result.stats}")
+    print(f"=== Parse result (engine: {result.engine}) ===")
+    print(f"source: {result.source}")
+    print(f"stats: {result.stats}")
     print()
     for block in result.blocks[:15]:
-        prefix = {"heading": "##", "table": "[表]", "paragraph": ""}.get(block.block_type, "")
+        prefix = {"heading": "##", "table": "[table]", "paragraph": ""}.get(block.block_type, "")
         preview = block.text[:100].replace("\n", " ")
         print(f"  p{block.page} {prefix} {preview}")
     if len(result.blocks) > 15:
-        print(f"  ... 共 {len(result.blocks)} 个块")
+        print(f"  ... {len(result.blocks)} blocks total")
     if out:
-        from pathlib import Path
-
         target = Path(out)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(result.markdown, encoding="utf-8")
-        print(f"\nMarkdown 已保存: {target}")
+        print(f"\nMarkdown saved: {target}")
 
 
 def _extract_file(path: str, engine: str) -> None:
@@ -194,19 +186,25 @@ def _extract_file(path: str, engine: str) -> None:
     ids = store.archive(result, parse_result.blocks)
     card = store.query_company_card(ids["company_id"])
 
-    print(f"=== 抽取与归档（引擎: {result.engine}）===")
-    print(f"公司: {card['company']['name']} ｜ ticker: {card['company'].get('ticker') or '未识别'}")
-    print(f"研报: {result.report_meta.title} ｜ {result.report_meta.broker} ｜ {result.report_meta.report_date}")
-    print(f"评级: {result.report_meta.rating or '-'} ｜ 目标价: {result.report_meta.target_price or '-'} 元")
+    print(f"=== Extraction & archive (engine: {result.engine}) ===")
+    print(f"company: {card['company']['name']} | ticker: {card['company'].get('ticker') or 'not detected'}")
+    print(
+        f"report: {result.report_meta.title} | {result.report_meta.broker} "
+        f"| {result.report_meta.report_date}"
+    )
+    print(f"rating: {result.report_meta.rating or '-'} | target: {result.report_meta.target_price or '-'} CNY")
     print()
     for metric_name, rows in card["metrics"].items():
         values = ", ".join(f"{r['period']}={r['value']}{r['unit']}" for r in rows)
         print(f"  {metric_name}: {values}")
     if card["risks"]:
-        print("\n风险提示:")
+        print("\nrisks:")
         for risk in card["risks"]:
             print(f"  - [{risk['category']}] {risk['risk_text']}")
-    print(f"\n[归档] report={ids['report_id'][:8]} metrics={ids['metrics']} chunks={ids['chunks']} risks={ids['risks']}")
+    print(
+        f"\n[archived] report={ids['report_id'][:8]} metrics={ids['metrics']} "
+        f"chunks={ids['chunks']} risks={ids['risks']}"
+    )
     store.close()
 
 
@@ -219,9 +217,9 @@ def _verify(out: str) -> None:
         target = Path(out)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(report, encoding="utf-8")
-        print(f"验证报告已保存: {target}")
+        print(f"Verification report saved: {target}")
     print(report[:2000])
-    print("\n[结论]", "全部通过 ✅" if result.passed else "存在未通过项 ❌")
+    print("\n[result]", "PASS ✅" if result.passed else "FAIL ❌")
 
 
 def _ask(question: str) -> None:
@@ -232,22 +230,22 @@ def _ask(question: str) -> None:
     chunks = store.load_chunks()
     if not chunks:
         store.close()
-        raise SystemExit("知识库为空：请先 extract 导入研报。")
+        raise SystemExit("Knowledge base is empty: run ingest-doc first.")
     retriever = HybridRetriever(chunks)
     answer = ask(question, store, retriever)
     print(answer.answer)
     print()
     if answer.memories:
-        print("[记忆提示]")
+        print("[memory hints]")
         for memory in answer.memories[:3]:
-            tag = {"fact": "已确认事实", "conclusion": "历史结论", "correction": "修正记录"}.get(
+            tag = {"fact": "confirmed fact", "conclusion": "history", "correction": "correction"}.get(
                 memory["kind"], memory["kind"]
             )
             print(f"  - [{tag}] {memory['content'][:100]}")
         print()
-    print(f"[路由] 意图={answer.intent} ｜ 通道={answer.channel} ｜ 降级={answer.fallback}")
+    print(f"[route] intent={answer.intent} | channel={answer.channel} | fallback={answer.fallback}")
     if answer.citations:
-        print("[引用]")
+        print("[citations]")
         for citation in answer.citations[:5]:
             print(f"  - {citation}")
     store.close()
@@ -258,11 +256,11 @@ def _ingest_doc(path: str, engine: str) -> None:
 
     pipeline = IngestionPipeline()
     result = pipeline.ingest(path, engine=engine)
-    print(f"=== 入库完成（{result['method']}）===")
-    print(f"原始文档登记: {result['doc_id']}")
-    print(f"标签: {result['tags']}")
+    print(f"=== Ingestion complete ({result['method']}) ===")
+    print(f"raw doc: {result['doc_id']}")
+    print(f"tags: {result['tags']}")
     print(
-        f"归档: report={result['report_id'][:8]} metrics={result['metrics']} "
+        f"archived: report={result['report_id'][:8]} metrics={result['metrics']} "
         f"chunks={result['chunks']} risks={result['risks']}"
     )
     pipeline.close()
@@ -278,12 +276,12 @@ def _confirm(question: str) -> None:
     retriever = HybridRetriever(chunks) if chunks else None
     if retriever is None:
         store.close()
-        raise SystemExit("知识库为空：请先 ingest-doc 导入研报。")
+        raise SystemExit("Knowledge base is empty: run ingest-doc first.")
     answer = ask(question, store, retriever)
     memory_ids = confirm_facts(question, answer, store)
     print(answer.answer)
     print()
-    print(f"[确认] 已写入 {len(memory_ids)} 条记忆（fact + conclusion）")
+    print(f"[confirm] {len(memory_ids)} memories written (fact + conclusion)")
     store.close()
 
 
@@ -293,9 +291,9 @@ def _correct(question: str, correction: str) -> None:
 
     store = ArchiveStore(get_settings().db_path)
     memory_id = correct_answer(question, correction, store)
-    print(f"[修正] 已写入记忆: {memory_id}")
-    print(f"  问题: {question}")
-    print(f"  修正: {correction}")
+    print(f"[correct] memory written: {memory_id}")
+    print(f"  question: {question}")
+    print(f"  correction: {correction}")
     store.close()
 
 
@@ -305,8 +303,8 @@ def _memories(keyword: str) -> None:
     store = ArchiveStore(get_settings().db_path)
     rows = store.memory_search(keyword) if keyword else store.list_memories(limit=30)
     if not rows:
-        print("暂无记忆。可用 confirm/correct 产生记忆。")
-    kind_label = {"fact": "事实", "conclusion": "结论", "correction": "修正", "preference": "偏好"}
+        print("No memories yet. Use confirm/correct to create them.")
+    kind_label = {"fact": "fact", "conclusion": "conclusion", "correction": "correction", "preference": "preference"}
     for row in rows:
         label = kind_label.get(row["kind"], row["kind"])
         print(f"[{label}][{row['confidence']:.2f}] {row['content'][:120]}")
@@ -318,22 +316,49 @@ def _setup() -> None:
 
     from quantra.setup_wizard import run_setup
 
-    print("⚙️  Quantra 配置向导（密钥只写入本地 .env，权限 600，不会上传）")
-    print("──────────────────────────────────────────────")
-    base_url = input("LLM 接口 Base URL [https://api.deepseek.com/v1]: ").strip() or "https://api.deepseek.com/v1"
-    api_key = getpass.getpass("LLM API Key（可留空，留空则 dry-run 模式）: ").strip()
-    db_path = input("数据库路径 [data/quantra.db]: ").strip() or "data/quantra.db"
+    print("⚙️  Quantra configuration wizard")
+    print("    Providers: LLM / Embeddings / Vector Store / Parser / Observability")
+    print("    Secrets are written only to the local .env (mode 0600).")
+    print("──────────────────────────────────────────────────────────")
+    config: dict = {}
+    print("\n[LLM provider]")
+    config["api_base"] = input("Base URL (default https://api.deepseek.com/v1): ").strip() or "https://api.deepseek.com/v1"
+    config["api_key"] = getpass.getpass("API key (optional; empty = deterministic mode): ").strip()
+    config["primary_model"] = input("Primary model (default deepseek-v4-pro): ").strip() or "deepseek-v4-pro"
+    config["cheap_model"] = input("Cheap model (default deepseek-v4-flash): ").strip() or "deepseek-v4-flash"
 
-    results = run_setup(base_url, api_key, db_path, ingest_samples=True, run_verify=True)
-    print("──────────────────────────────────────────────")
-    print(f"✅ 配置完成")
-    print(f"   .env: {results['env']}（权限 600）")
-    print(f"   数据库: {results['db']}")
+    print("\n[Embeddings]")
+    config["embedding_provider"] = input("Provider auto/openai/bge-m3/none (default auto): ").strip() or "auto"
+    if config["embedding_provider"] in ("openai", "api"):
+        config["embedding_api_base"] = input("Embedding API base (default: same as LLM): ").strip()
+        config["embedding_api_key"] = getpass.getpass("Embedding API key: ").strip()
+
+    print("\n[Vector store]")
+    config["vector_store"] = input("Store memory/qdrant (default memory): ").strip() or "memory"
+    if config["vector_store"] == "qdrant":
+        config["vector_store_url"] = input("Qdrant URL (e.g. http://localhost:6333): ").strip()
+        config["vector_store_collection"] = input("Collection name (default quantra): ").strip() or "quantra"
+
+    print("\n[Parser / Observability]")
+    config["parser_engine"] = input("Parser auto/mineru/docling (default auto): ").strip() or "auto"
+    config["observability"] = input("Observability none/langfuse (default none): ").strip() or "none"
+    if config["observability"] == "langfuse":
+        config["langfuse_public_key"] = getpass.getpass("Langfuse public key: ").strip()
+        config["langfuse_secret_key"] = getpass.getpass("Langfuse secret key: ").strip()
+
+    config["db_path"] = input("Database path (default data/quantra.db): ").strip() or "data/quantra.db"
+
+    results = run_setup(config, ingest_samples=True, run_verify=True)
+    print("──────────────────────────────────────────────────────────")
+    print("✅ Configuration complete")
+    print(f"   .env: {results['env']} (mode 0600)")
+    print(f"   database: {results['db']}")
+    print(f"   providers: {results['providers']}")
     if results.get("samples"):
-        print(f"   样例导入: {len(results['samples'])} 份研报")
+        print(f"   samples ingested: {len(results['samples'])}")
     if results.get("verify_passed"):
-        print(f"   端到端验证: ✅ {results['verify_checks']} 项通过")
-    print("下一步：quantra ui 打开主界面，或 quantra ask \"问题\"")
+        print(f"   end-to-end verification: PASS ({results['verify_checks']})")
+    print("Next: quantra ui  |  quantra ask \"your question\"")
 
 
 def _ui(port: int, host: str) -> None:
@@ -343,70 +368,62 @@ def _ui(port: int, host: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="quantra", description="Agentic 研报投研工作台")
+    parser = argparse.ArgumentParser(prog="quantra", description="Agentic research intelligence platform")
     sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("init-db", help="初始化 SQLite 数据库")
-
-    ingest_p = sub.add_parser("ingest", help="导入研报（支持 .md/.txt/.pdf）")
+    sub.add_parser("init-db", help="Initialize the SQLite database")
+    ingest_p = sub.add_parser("ingest", help="Ingest reports (.md/.txt/.pdf)")
     ingest_p.add_argument("paths", nargs="+")
-
-    query_p = sub.add_parser("query", help="向 Agent 提问")
+    query_p = sub.add_parser("query", help="Ask the agent a question")
     query_p.add_argument("question")
     query_p.add_argument("-v", "--verbose", action="store_true")
-
-    sub.add_parser("demo-memo", help="零配置跑通全流程演示")
-
-    audit_p = sub.add_parser("audit-log", help="查看审计日志")
+    sub.add_parser("demo-memo", help="Run the full pipeline demo")
+    audit_p = sub.add_parser("audit-log", help="Show the audit trail")
     audit_p.add_argument("--limit", type=int, default=20)
+    sub.add_parser("eval", help="Run citation-coverage evaluation")
 
-    sub.add_parser("eval", help="运行引用覆盖率评测")
-
-    scenario_p = sub.add_parser("scenario", help="业务场景模拟器")
+    scenario_p = sub.add_parser("scenario", help="Business scenario simulator")
     scenario_sub = scenario_p.add_subparsers(dest="scenario_cmd")
-    scenario_sub.add_parser("list", help="列出内置场景")
-    scenario_run_p = scenario_sub.add_parser("run", help="运行一个场景")
+    scenario_sub.add_parser("list", help="List scenarios")
+    scenario_run_p = scenario_sub.add_parser("run", help="Run a scenario")
     scenario_run_p.add_argument("scenario_id")
 
-    parse_p = sub.add_parser("parse", help="文档解析（输入接口→引擎→输出接口）")
+    parse_p = sub.add_parser("parse", help="Parse a document (ParseRequest -> engine -> ParseResult)")
     parse_p.add_argument("path")
     parse_p.add_argument("--engine", default="auto", help="auto/pdfplumber/mineru/docling")
-    parse_p.add_argument("--out", default="", help="保存 Markdown 到指定路径")
+    parse_p.add_argument("--out", default="", help="Save markdown to a path")
 
-    extract_p = sub.add_parser("extract", help="抽取并归档（ParseResult -> ExtractionResult -> 数据库）")
+    extract_p = sub.add_parser("extract", help="Extract and archive (ParseResult -> ExtractionResult -> DB)")
     extract_p.add_argument("path")
-    extract_p.add_argument("--engine", default="auto", help="auto/pdfplumber/mineru/docling")
+    extract_p.add_argument("--engine", default="auto")
 
-    verify_p = sub.add_parser("verify", help="端到端验证（输入识别→输出合理性→数据库沉淀）")
-    verify_p.add_argument("--out", default="", help="验证报告保存路径")
+    verify_p = sub.add_parser("verify", help="End-to-end verification")
+    verify_p.add_argument("--out", default="", help="Report output path")
 
-    ask_p = sub.add_parser("ask", help="业务问数（路由：结构化优先，缺失自动降级文档）")
+    ask_p = sub.add_parser("ask", help="Routed Q&A (SQL-first, doc fallback)")
     ask_p.add_argument("question")
 
-    ingest_doc_p = sub.add_parser("ingest-doc", help="入库管道：解析→抽取→打标→双写（结构化 + 原始文档登记）")
+    ingest_doc_p = sub.add_parser("ingest-doc", help="Ingestion pipeline: parse -> extract -> tag -> dual-write")
     ingest_doc_p.add_argument("path")
     ingest_doc_p.add_argument("--engine", default="auto")
 
-    confirm_p = sub.add_parser("confirm", help="确认答案并写入记忆（确认即记忆）")
+    confirm_p = sub.add_parser("confirm", help="Confirm an answer -> durable memory")
     confirm_p.add_argument("question")
-
-    correct_p = sub.add_parser("correct", help="记录交易员修正（修正记忆）")
+    correct_p = sub.add_parser("correct", help="Record a trader correction")
     correct_p.add_argument("question")
     correct_p.add_argument("correction")
-
-    memories_p = sub.add_parser("memories", help="查看跨对话记忆")
+    memories_p = sub.add_parser("memories", help="List/search cross-conversation memory")
     memories_p.add_argument("keyword", nargs="?", default="")
 
-    sub.add_parser("setup", help="交互式配置向导（模型接口/数据库路径，密钥写入本地 .env）")
-
-    ui_p = sub.add_parser("ui", help="打开本地主界面（零依赖 Web UI）")
+    sub.add_parser("setup", help="Configuration wizard (providers -> .env)")
+    ui_p = sub.add_parser("ui", help="Launch the web console")
     ui_p.add_argument("--host", default="127.0.0.1")
     ui_p.add_argument("--port", type=int, default=8000)
 
     args = parser.parse_args(argv)
     if args.command == "init-db":
         store = _open_store()
-        print(f"数据库已初始化: {get_settings().db_path}")
+        print(f"Database initialized: {get_settings().db_path}")
         store.close()
     elif args.command == "ingest":
         _ingest(args.paths)
@@ -424,7 +441,7 @@ def main(argv: list[str] | None = None) -> None:
         elif args.scenario_cmd == "run":
             _scenario_run(args.scenario_id)
         else:
-            print("用法: python -m quantra.app.cli scenario {list|run <id>}")
+            print("Usage: quantra scenario {list|run <id>}")
             sys.exit(1)
     elif args.command == "parse":
         _parse_file(args.path, args.engine, args.out)

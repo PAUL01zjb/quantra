@@ -9,22 +9,34 @@ from __future__ import annotations
 from typing import Optional
 
 from quantra.models import Chunk, RetrievedChunk
+from quantra.providers.embeddings import Embedder
+from quantra.providers.reranker import Reranker
+from quantra.providers.vectorstore import VectorStore
 from quantra.retrieval.bm25 import BM25
 
 
-class Embedder:
-    def embed(self, texts: list[str]):
-        raise NotImplementedError
-
-
 class HybridRetriever:
-    def __init__(self, chunks: list[Chunk], embedder: Optional[Embedder] = None):
+    def __init__(
+        self,
+        chunks: list[Chunk],
+        embedder: Optional[Embedder] = None,
+        vector_store: Optional[VectorStore] = None,
+        reranker: Optional[Reranker] = None,
+    ):
         self.chunks = chunks
         self.bm25 = BM25().fit([c.text for c in chunks])
         self.embedder = embedder
+        self.vector_store = vector_store
+        self.reranker = reranker
         self._vectors = None
-        if embedder is not None:
+        if embedder is not None and vector_store is None:
             self._vectors = embedder.embed([c.text for c in chunks])
+        if embedder is not None and vector_store is not None and len(chunks):
+            vector_store.add(
+                [c.chunk_id for c in chunks],
+                embedder.embed([c.text for c in chunks]),
+                [{"report_id": c.report_id, "heading": c.heading} for c in chunks],
+            )
 
     def search(
         self,
@@ -55,9 +67,23 @@ class HybridRetriever:
                 cid = idx_to_cid[int(idx)]
                 scores[cid] = scores.get(cid, 0.0) + 1.0 / (60 + rank)
 
+        if self.vector_store is not None and self.embedder is not None:
+            qv = self.embedder.embed([query])[0]
+            for rank, (cid, _score) in enumerate(self.vector_store.search(qv, top_k=k * 2)):
+                scores[cid] = scores.get(cid, 0.0) + 1.0 / (60 + rank)
+
         ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:k]
         by_id = {c.chunk_id: c for c in self.chunks}
-        return [
+        results = [
             RetrievedChunk(chunk=by_id[cid], score=score, source="rrf")
             for cid, score in ranked
         ]
+        if self.reranker is not None and results:
+            try:
+                scores = self.reranker.rerank(query, [r.chunk.text for r in results])
+                for result, score in zip(results, scores):
+                    result.score = float(score)
+                results.sort(key=lambda r: r.score, reverse=True)
+            except RuntimeError:
+                pass
+        return results

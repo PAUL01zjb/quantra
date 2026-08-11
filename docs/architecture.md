@@ -1,269 +1,102 @@
-# Quantra 架构设计（v0.1）
+# Quantra Architecture
 
-> 更新：2026-08-08 ｜ 状态：与代码同步演进
+> Updated: 2026-08-11 ｜ Status: production-oriented, evolving with the codebase
 
-## 0. 生产架构（GitHub 展示版，v1.0 目标）
-
-本仓库对外展示的完整生产架构，与本地学习版共享同一套输出契约：
+## 0. System Overview
 
 ```mermaid
 flowchart LR
-  A["研报 PDF（复杂版式/扫描件）"] --> B["MinerU 解析<br/>版面检测 + OCR + 表格结构"]
-  B --> C["schema-guided LLM 抽取<br/>+ 规则校验双通道"]
-  C --> D["归档层<br/>company / report / metric_fact / chunk / risk / conclusion"]
-  D --> E["Hybrid RAG<br/>bge-m3 + BM25 + rerank + text2sql"]
-  E --> F["LangGraph 状态机编排<br/>+ 人工确认节点"]
-  F --> G["交易员确认台（公司卡片 + 带引用备忘录）"]
-  F --> H["RAGAS 评测 + Langfuse 可观测 + LiteLLM 成本路由"]
+  A["Research reports<br/>PDF / MD / TXT"] --> B["MinerU / Docling parsing"]
+  B --> C["Schema-guided LLM extraction<br/>+ dictionary validation"]
+  C --> D["Dual-write storage<br/>structured facts + raw docs"]
+  D --> E["Hybrid retrieval<br/>BM25 + bge-m3 + rerank + vector store"]
+  E --> F["LangGraph orchestration<br/>+ MCP-style tools + confirmation node"]
+  F --> G["Confirmation desk<br/>company cards · cited answers"]
+  F --> H["RAGAS evaluation + Langfuse tracing<br/>LiteLLM cost routing"]
 ```
 
-技术选型：MinerU/Docling（解析）、schema-guided LLM + 规则校验（抽取）、
-bge-m3 + BM25 + rerank（检索）、LangGraph + MCP（编排）、Qdrant/pgvector（向量）、
-RAGAS（评测）、Langfuse（可观测）、LiteLLM（路由）。
+## 1. Parsing Layer (interface-driven pipeline)
 
-> 本地学习版 = 生产架构的轻量子集：pdfplumber（解析）+ 规则（抽取）+
-> 手写 BM25（检索）+ Plan-and-Execute（编排），零重型依赖，接口与生产版一致。
+`ParseRequest` (input contract: source, language, mode, tables, page range, engine)
+→ engine layer (MinerU default in production, Docling, pdfplumber fallback)
+→ `ParseResult` (output contract: blocks / markdown / stats / engine).
 
-## 1. 总体架构
+MinerU engine is integrated (`parsing/engines/mineru_engine.py` + `mineru_mapper.py`):
+`magic-pdf` CLI produces `content_list.json` + `.md`, mapped into the unified `ParseResult`.
+The mapper is version-tolerant with a markdown fallback, so the output contract never changes.
 
-```mermaid
-flowchart TB
-  subgraph 数据层
-    A["研报 PDF / MD / TXT"]
-    B["场景模拟器<br/>真实业务场景定义"]
-  end
-  subgraph 核心层
-    C["ingest 解析 + 指标抽取"]
-    D["storage SQLite<br/>事实库/审计/记忆"]
-    E["retrieval 分块 + BM25<br/>+ 可插拔向量"]
-    F["agent 编排状态机<br/>工具Schema生成/路由/审计"]
-    G["eval 金标准评测<br/>引用覆盖率/幻觉守卫"]
-  end
-  subgraph 输出层
-    H["带引用投资备忘录"]
-    I["成本报告 + Trace + 审计回放"]
-    J["场景评测报告"]
-  end
-  A --> C --> D
-  B --> F
-  D --> E --> F
-  F --> G
-  F --> H
-  F --> I
-  G --> J
-```
+## 2. Extraction Layer (schema-guided LLM + rule validation)
 
-## 2. 一次业务问答的完整时序
+`ParseResult → ExtractionResult`: company info, report metadata (broker/analyst/rating/target),
+metric facts (value/period/unit/page/section), risks.
 
-```mermaid
-sequenceDiagram
-  participant U as 用户/场景
-  participant A as QuantraAgent
-  participant R as Retriever
-  participant T as Tools
-  participant L as LLM(可插拔)
-  participant S as SQLite
-  U->>A: 业务问题（如"对比两家公司毛利率"）
-  A->>A: 编排状态机进入 PLANNING
-  A->>L: 生成计划（或确定性默认计划）
-  A->>A: 校验计划步骤（工具白名单 + 预算）
-  A->>A: EXECUTING
-  A->>R: 检索相关研报段落
-  R-->>A: 带章节/页码的引用块
-  A->>T: extract_metric / calc_trend（审计 + 成本记录）
-  T-->>A: 结构化指标与趋势
-  A->>L: 生成带引用备忘录（或 dry-run 模板）
-  A->>A: REVIEWING（引用覆盖检查）
-  A->>S: 记忆写入 + 审计落库
-  A-->>U: 备忘录 + 成本 + trace + 评测
-```
+- Dictionary: 96 canonical metrics across 10 industries (general/banking/securities/insurance/
+  real-estate/consumer/pharma/tech-manufacturing/auto/energy-chemicals/utilities-infra), alias-normalized.
+- LLM channel (`extraction/llm_extractor.py`): schema-guided JSON extraction via OpenAI-compatible
+  providers; dictionary validates and normalizes output (unknown metrics are rejected).
+- Rule channel: deterministic extraction, used when no provider key is configured.
 
-## 3. 模块职责与接口
+## 3. Storage Layer (dual-write)
 
-| 模块 | 职责 | 关键接口 |
+| Table | Key | Purpose |
 |---|---|---|
-| `parsing/` | 解析小框架：输入接口 ParseRequest → 引擎层（pdfplumber/MinerU/Docling 插拔）→ 输出接口 ParseResult | `parse_document(request) -> ParseResult` |
-| `ingest/parser` | （旧版，待迁移）解析 + 规则抽取指标 | `parse_document(path) -> Report` |
-| `storage/db` | 事实库、审计、记忆统一落库 | `upsert_report / audit / memory_append` |
-| `retrieval/chunking` | 标题感知分块、表格保留、重叠窗口 | `chunk_report(report) -> list[Chunk]` |
-| `retrieval/bm25` | 手写 BM25（含中文分词兜底） | `fit(docs) / top_k(query)` |
-| `retrieval/hybrid` | BM25 + 可插拔向量 + RRF | `search(query, k) -> list[RetrievedChunk]` |
-| `agent/tools` | 工具注册、Schema 生成、白名单 | `run_tool(name, args)` |
-| `agent/orchestrator` | 三态状态机、计划-执行-评审 | `run(question) -> AgentResult` |
-| `agent/router` | 成本感知模型路由 | `route(task, settings) -> model` |
-| `agent/audit` | 全链路审计钩子 | `step(action, detail)` 上下文管理器 |
-| `eval/grounding` | 引用覆盖率、幻觉守卫 | `citation_coverage(memo, evidence)` |
-| `scenarios/` | 真实业务场景定义与模拟运行 | `run_scenario(id) -> report` |
-| `app/cli` | 命令行入口 | `ingest / query / scenario / eval / audit-log` |
+| `company` | company_id (**ticker-first**, e.g. `600036.SH`) | master dimension |
+| `report` | report_id | report archive (broker/analyst/date/rating) |
+| `metric_fact` | (report_id, company_id, metric_name, period) | metric facts (BI-ready) |
+| `document_chunk` | chunk_id | text blocks for retrieval/citation |
+| `risk` / `conclusion` | — | risks and key conclusions |
+| `raw_doc` | doc_id | original-document registry (hash + composite tags) |
+| `memory` | dedupe on (kind, entity, content) | cross-conversation memory |
+| `extraction_audit` | — | audit trail |
 
-## 3.1 问数路由层（SQL-first / RAG-fallback）
+Composite tags: ticker / company / industry / report_type / report_date / broker / source,
+used for retrieval pre-filtering and BI grouping. Production raw-doc layer sits on multimodal /
+object storage for provenance and full-text reading.
 
-业务问数走"确定性路由 + 轻量判别"两段式，结构化优先、缺失自动降级：
+## 4. Query Routing (SQL-first / RAG-fallback)
 
 ```mermaid
 flowchart TB
-  Q["用户问题"] --> R1["① 规则路由<br/>意图分类（指标/风险/原文词命中）<br/>实体识别（ticker/公司名）"]
-  R1 -->|"fact"| R2["② 结构化查询 metric_fact（SQL）"]
-  R2 --> R3["覆盖度检查"]
-  R3 -->|"有结果"| A["带引用答案"]
-  R3 -->|"空结果"| R4["③ 自动降级文档检索（标签预过滤）"]
+  Q["Question"] --> R1["Rule router<br/>intent (metric/risk/source words)<br/>entity (ticker/company)"]
+  R1 -->|"fact"| R2["Structured query (metric_fact SQL)"]
+  R2 --> R3["Coverage check"]
+  R3 -->|"hit"| A["Cited answer"]
+  R3 -->|"miss"| R4["Hybrid retrieval (tag pre-filter + BM25/vector)"]
   R1 -->|"semantic/document"| R4
   R4 --> A
 ```
 
-设计要点：
+- Rule router is the first gate: zero-model, explainable, auditable.
+- Coverage check auto-falls-back to document retrieval; no model judgment needed.
+- A lightweight judge node (production: cheap model) handles ambiguity; dev-mode rule stub.
 
-1. **规则路由是第一道门**：指标词典命中 → fact；"原文/第几页" → document；"怎么看/风险/趋势" → semantic。零模型、可解释、可审计。
-2. **覆盖度检查是自动兜底**：SQL 空结果自动切文档通道，不需要模型"判别"。
-3. **轻量判别 Agent 预留**：歧义问题（无公司/结果矛盾）由编排层 router 节点处理，学习版规则占位，生产版接便宜模型。
-4. 实现：`quantra/query/`（router / channels / pipeline），CLI `ask`。
+## 5. Memory (confirmation-driven)
 
-## 4. 关键设计决策（trade-off）
-
-### 4.1 编排 = 状态机，不是"死循环调模型"
-
-决策：planning → executing → reviewing 三态显式建模；步数上限、成本预算上限、失败重试与回退。
-
-为什么：裸 ReAct 循环的最大问题是"不收敛不可控"。显式状态机让"Agent 卡死/超支"从玄学变成可设计、可测试、可面试讲解的工程问题。
-
-代价：编排灵活性略降（每类任务需要适配计划模板），通过"确定性默认计划 + LLM 计划双通道"缓解。
-
-### 4.2 工具 Schema 从函数签名自动生成
-
-决策：用 `inspect.signature` + 类型注解 + docstring 第一行生成 JSON Schema，执行前参数校验、执行后异常恢复。
-
-为什么：手写 Schema 会与函数实现漂移；自动生成保证"工具定义"与"工具实现"单一事实源。这也是函数调用底层的核心工程点。
-
-代价：类型注解需要规范（`Optional[str]`、默认值语义需约定），用测试锁定。
-
-### 4.6 解析层 = 接口化流水线，不是"一个解析函数"
-
-决策：`ParseRequest`（输入契约：来源/语言/模式/是否解析表格/页范围/引擎）→ 引擎层（pdfplumber 默认、MinerU/Docling 可选）→ `ParseResult`（输出契约：blocks/markdown/stats/engine）。
-
-为什么：解析方案演进快（CNN 版面检测 → VLM 端到端），接口隔离后换引擎不影响上层；上层（抽取/归档/Agent）只依赖输出契约，可测试、可审计。
-
-代价：多一层抽象；用引擎选择策略（auto → 文本型用 pdfplumber，扫描件切 MinerU）缓解。
-
-### 4.3 检索 = BM25 起步，向量可插拔
-
-决策：手写 BM25（含中文 unigram+bigram 兜底），向量检索通过 `Embedder` 接口预留，RRF 融合。
-
-为什么：金融数字场景大量精确匹配（指标名、年份、数值），BM25 是性价比最高的基线；先跑通再上向量，避免过早引入依赖。
-
-代价：语义召回弱于向量检索，D3 以 recall@k 金标准集评估差距后决定是否接入。
-
-### 4.4 记忆 = 分层设计
-
-决策：episodic（问答记录）+ semantic（研究结论/待验证假设/失败经验）分层，跨会话可查、可去重。
-
-为什么：对齐 8/3 简报"记忆层卡位"主题；研究结论不丢、失败经验可复用，是量化研究 Agent 的核心痛点。
-
-### 4.5 评测 = 引用覆盖率 + 金标准回归
-
-决策：每个结论句必须与证据文本有可量化重合度；金标准问答集做回归对比，防止改动破坏已有能力。
-
-为什么：金融场景幻觉代价高；"引用可溯源"不是口号，是评测指标。
-
-### 4.6 解析层 = 接口化流水线，不是"一个解析函数"
-
-决策：`ParseRequest`（输入契约：来源/语言/模式/是否解析表格/页范围/引擎）→ 引擎层（pdfplumber 默认、MinerU/Docling 可选）→ `ParseResult`（输出契约：blocks/markdown/stats/engine）。
-
-为什么：解析方案演进快（CNN 版面检测 → VLM 端到端），接口隔离后换引擎不影响上层；上层（抽取/归档/Agent）只依赖输出契约，可测试、可审计。
-
-代价：多一层抽象；用引擎选择策略（auto → 文本型用 pdfplumber，扫描件切 MinerU）缓解。
-
-### 4.7 MinerU 引擎已集成（本地无需安装）
-
-仓库内 `parsing/engines/mineru_engine.py` + `mineru_mapper.py` 已实现 MinerU 接入：
-命令行 `magic-pdf` 产出 `content_list.json` + `.md`，由映射层转换为统一 `ParseResult`。
-`mineru_mapper` 是纯函数（离线可测），对 MinerU 版本间结构差异做"宽容映射"，
-结构不认识时兜底从 markdown 重新分块，保证输出契约稳定。
-
-### 4.8 入库管道与标签体系
-
-业务只需上传文档：入库管道自动完成 解析 → 抽取 → 打标 → 双写。
-标签字段：ticker / company / industry / report_type / report_date / broker / source，
-作为检索预过滤与 BI 分组的元数据。原始文档登记表 `raw_doc`（哈希 + 标签 JSON），
-生产版底层为多模态/对象存储（PDF 原文保留，溯源与全文阅读用）。
-
-### 4.9 跨对话记忆（四类）
-
-| 类型 | 内容 | 置信度 | 入口 |
+| Type | Content | Confidence | Entry |
 |---|---|---|---|
-| fact | 交易员确认过的指标事实 | 0.95 | 确认台确认动作 |
-| conclusion | 每次业务问答结论（带来源） | 0.90 | 问答结束自动沉淀 |
-| correction | 交易员修正（如"净息差单位用%"） | 1.00 | 修正动作 |
-| preference | 交易员偏好 | 0.80 | 行为统计（预留） |
+| fact | trader-confirmed metric facts | 0.95 | confirmation action |
+| conclusion | Q&A conclusions with sources | 0.90 | after each session |
+| correction | trader corrections (e.g. "NIM in %") | 1.00 | correction action |
+| preference | trader preferences | 0.80 | behavior stats (planned) |
 
-实现：`memory` 表（dedupe 唯一索引 + 版本更新），`inject_memory` 按公司/指标/分词多路检索注入。
-生产版：LangGraph 人工确认节点 + Mem0 / LangGraph Store / TencentDB-Agent-Memory。
+`inject_memory` retrieves relevant memories by company/metric/tokens and injects them into the
+current session. Production memory: LangGraph checkpoint + Mem0 / LangGraph Store.
 
-### 4.10 LLM 抽取双通道（生产版）
+## 6. Agent Orchestration
 
-`extraction/llm_extractor.py`：schema-guided LLM 按输出契约抽取 JSON，
-规则词典（行业指标）做校验归一化——LLM 抽取 + 规则校验双通道。
-未配置 API Key 时入库管道自动回退规则通道（学习版链路不受影响）。
+- Current: Plan-and-Execute loop with tool whitelist, cost-aware routing, audit hooks.
+- Production: `agent/graph.py` wires a LangGraph state machine
+  (planning → executing → reviewing → human confirmation) with the same tool set.
 
-## 5. 输出格式提案（待用户确认）
+## 7. Providers (pluggable)
 
-业务目标：**交易员快速确认研报信息 + 沉淀可查询数据库**。
+`providers/` exposes interfaces for LLM, embeddings (bge-m3 / OpenAI-compatible), vector store
+(Qdrant / pgvector / in-memory), reranker (bge-reranker), and observability (Langfuse).
+All degrade gracefully when optional dependencies are not installed.
 
-用户方向："某公司一个主键 → 各项指标"。确认成立，但建议主键分层：
+## 8. Evolution
 
-```mermaid
-erDiagram
-  company ||--o{ report : "被研报覆盖"
-  company ||--o{ metric_fact : "拥有指标"
-  report ||--o{ metric_fact : "产出指标"
-  report ||--o{ document_chunk : "切块"
-  report ||--o{ risk : "披露风险"
-  report ||--o{ conclusion : "关键结论"
-```
-
-表设计：
-
-| 表 | 主键 | 关键字段 | 说明 |
-|---|---|---|---|
-| `company` | company_id | name, ticker, sector | 主维度（用户关心的"公司主键"）|
-| `report` | report_id | company_id, broker, analyst, date, title, rating, target_price | 研报档案（一家公司多份研报）|
-| `metric_fact` | (report_id, company_id, metric_name, period) | value, unit, source_page, raw_text, method, confidence | **指标事实表**（复合键）|
-| `document_chunk` | chunk_id | report_id, heading, page, text | 检索/引用用原文块 |
-| `risk` | risk_id | report_id, company_id, risk_text, category | 风险提示 |
-| `conclusion` | conclusion_id | report_id, company_id, text, evidence_chunk_ids | 关键结论 |
-| `extraction_audit` | audit_id | report_id, action, model, cost, status | 抽取审计 |
-
-为什么不能只有"公司 → 指标"：
-
-1. **一家公司有多份研报**（不同券商、不同时点）——指标必须挂在 report 维度上，才能做时间序列、多券商对比；
-2. **指标本身有期间维度**（2023/2024/2025E）——`metric_fact` 复合键 (report, company, metric, period) 是唯一稳定的事实粒度；
-3. **引用溯源**要求指标能回到原文页码/章节——保留 raw_text + source_page；
-4. **交易员确认台看到的"公司卡片"** 是聚合视图：company + 各指标最新值/历史 + 评级/目标价 + 风险 + 来源引用——底层仍是上面的表。
-
-待确认点：
-
-- [x] 是否接受"company 主维度 + metric_fact 复合键"分层模型 —— **已确认（2026-08-10）**
-- [x] 是否需要 ticker（股票代码）维度 —— **已确认：优先股票代码**（如 600519.SH，未识别时按公司名 hash 兜底）
-- [x] 指标词典第一版 —— **已确认：最大公约数**（毛利率/净利率/营业收入/归母净利润/净利润/ROE/EPS/PE/PB）
-
-实现状态：`storage/schema.py`（DDL）、`extraction/dictionary.py`（指标词典）、
-`extraction/extractor.py`（ParseResult → ExtractionResult）、`storage/archive.py`（归档 + 公司卡片聚合视图）已落地，
-CLI `extract <path>` 一键"解析 → 抽取 → 归档 → 公司卡片"。
-
-## 6. 数据模型（现状）
-
-核心实体：`Report / Section / Table / Metric / Chunk / AgentStep / AgentResult / Scenario`。
-
-存储：SQLite 单文件（reports、sections、metrics、chunks、audit_log、memory），零部署成本。
-
-## 7. 可观测性与安全
-
-- 每个工具调用：动作、参数、模型、成本、状态全部进 `audit_log`，`audit-log` 命令可回放。
-- 每次运行：生成 trace（步骤、延迟、token、成本预估）。
-- 安全：工具白名单 + 参数校验；有副作用操作标记为需人工审批（`side_effect=True`），后续接审批钩子。
-
-## 8. 演进路线
-
-- D3：向量检索接入与 RRF 评估
-- D5：多 Agent 角色（研究/质检/风控评审）
-- D7：Streamlit 演示界面
-- 之后：研报因子定义抽取（对接"研报 → 因子复现"方向）
+- Enable embeddings + vector store + rerank (interfaces ready)
+- Enable LangGraph orchestration (graph module ready)
+- RAGAS golden-regression suite
+- Open-source contribution track

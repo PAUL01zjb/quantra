@@ -18,6 +18,17 @@ dependencies = [
 [project.optional-dependencies]
 eval = ["pytest>=8.0"]
 cn = ["jieba>=0.42"]
+production = [
+    "langgraph>=0.2",
+    "litellm>=1.40",
+    "qdrant-client>=1.9",
+    "sentence-transformers>=3.0",
+    "FlagEmbedding>=1.2",
+    "langfuse>=2.0",
+    "ragas>=0.1",
+    "magic-pdf[full]>=0.10",
+    "jieba>=0.42",
+]
 
 [project.scripts]
 quantra = "quantra.app.cli:main"

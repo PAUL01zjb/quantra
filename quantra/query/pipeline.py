@@ -1,4 +1,4 @@
-"""问数主流程：路由 → 通道查询 → 覆盖度降级 → 带引用答案（学习版确定性模板）。"""
+"""Q&A pipeline: routing → dual-channel query → coverage fallback → cited answers."""
 
 from __future__ import annotations
 
