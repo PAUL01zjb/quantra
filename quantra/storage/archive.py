@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from quantra.extraction.extractor import ExtractionResult
+from quantra.models import Chunk
 from quantra.parsing.interfaces import DocumentBlock
 from quantra.storage.schema import SCHEMA_V2
 
@@ -103,6 +104,21 @@ class ArchiveStore:
             )
         return len(rows)
 
+    def load_chunks(self) -> list[Chunk]:
+        rows = self.conn.execute(
+            "SELECT chunk_id, report_id, heading, page, text FROM document_chunk"
+        ).fetchall()
+        return [
+            Chunk(
+                chunk_id=r["chunk_id"],
+                report_id=r["report_id"],
+                heading=r["heading"],
+                page=r["page"],
+                text=r["text"],
+            )
+            for r in rows
+        ]
+
     def upsert_risks(self, report_id: str, company_id: str, result: ExtractionResult) -> int:
         with self.conn:
             self.conn.executemany(
@@ -156,6 +172,14 @@ class ArchiveStore:
             "metrics": metrics,
             "risks": risks,
         }
+
+    def list_reports(self) -> list[dict]:
+        return [
+            dict(r)
+            for r in self.conn.execute(
+                "SELECT report_id, title, broker, report_date FROM report ORDER BY report_date"
+            ).fetchall()
+        ]
 
     def close(self) -> None:
         self.conn.close()

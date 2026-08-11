@@ -56,6 +56,7 @@ python -m quantra.app.cli parse data/samples/示例-消费龙头2025年报点评
 python -m quantra.app.cli extract data/samples/示例-消费龙头2025年报点评.pdf
 python -m quantra.app.cli verify                       # 端到端验证（输入识别→输出合理性→数据库沉淀）
 python -m quantra.app.cli scenario run analyst-compare # 业务场景模拟
+python -m quantra.app.cli ask "消费龙头2025年毛利率是多少？"  # 业务问数（路由：结构化优先，缺失自动降级）
 python -m quantra.app.cli audit-log --limit 20
 ```
 
@@ -74,6 +75,7 @@ quantra/
 ├── extraction/       抽取层：ParseResult → ExtractionResult（指标词典/规则抽取，LLM 通道预留）
 ├── storage/          归档层：schema v2（company/report/metric_fact/...）+ 公司卡片聚合
 ├── retrieval/        检索层：分块 + BM25 + 混合检索（向量接口预留）
+├── query/            问数路由层：规则路由 → 双通道查询 → 覆盖度降级（SQL-first / RAG-fallback）
 ├── agent/            编排层：工具/路由/审计 + Plan-and-Execute（LangGraph 迁移预留）
 ├── eval/             评测层：引用覆盖率、幻觉守卫
 ├── scenarios/        业务场景模拟器（基金经理助理 / 风控评审）

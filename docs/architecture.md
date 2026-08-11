@@ -96,6 +96,28 @@ sequenceDiagram
 | `scenarios/` | 真实业务场景定义与模拟运行 | `run_scenario(id) -> report` |
 | `app/cli` | 命令行入口 | `ingest / query / scenario / eval / audit-log` |
 
+## 3.1 问数路由层（SQL-first / RAG-fallback）
+
+业务问数走"确定性路由 + 轻量判别"两段式，结构化优先、缺失自动降级：
+
+```mermaid
+flowchart TB
+  Q["用户问题"] --> R1["① 规则路由<br/>意图分类（指标/风险/原文词命中）<br/>实体识别（ticker/公司名）"]
+  R1 -->|"fact"| R2["② 结构化查询 metric_fact（SQL）"]
+  R2 --> R3["覆盖度检查"]
+  R3 -->|"有结果"| A["带引用答案"]
+  R3 -->|"空结果"| R4["③ 自动降级文档检索（标签预过滤）"]
+  R1 -->|"semantic/document"| R4
+  R4 --> A
+```
+
+设计要点：
+
+1. **规则路由是第一道门**：指标词典命中 → fact；"原文/第几页" → document；"怎么看/风险/趋势" → semantic。零模型、可解释、可审计。
+2. **覆盖度检查是自动兜底**：SQL 空结果自动切文档通道，不需要模型"判别"。
+3. **轻量判别 Agent 预留**：歧义问题（无公司/结果矛盾）由编排层 router 节点处理，学习版规则占位，生产版接便宜模型。
+4. 实现：`quantra/query/`（router / channels / pipeline），CLI `ask`。
+
 ## 4. 关键设计决策（trade-off）
 
 ### 4.1 编排 = 状态机，不是"死循环调模型"

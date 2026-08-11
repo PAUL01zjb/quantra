@@ -224,6 +224,27 @@ def _verify(out: str) -> None:
     print("\n[结论]", "全部通过 ✅" if result.passed else "存在未通过项 ❌")
 
 
+def _ask(question: str) -> None:
+    from quantra.query.pipeline import ask
+    from quantra.storage.archive import ArchiveStore
+
+    store = ArchiveStore(get_settings().db_path)
+    chunks = store.load_chunks()
+    if not chunks:
+        store.close()
+        raise SystemExit("知识库为空：请先 extract 导入研报。")
+    retriever = HybridRetriever(chunks)
+    answer = ask(question, store, retriever)
+    print(answer.answer)
+    print()
+    print(f"[路由] 意图={answer.intent} ｜ 通道={answer.channel} ｜ 降级={answer.fallback}")
+    if answer.citations:
+        print("[引用]")
+        for citation in answer.citations[:5]:
+            print(f"  - {citation}")
+    store.close()
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="quantra", description="Agentic 研报投研工作台")
     sub = parser.add_subparsers(dest="command")
@@ -262,6 +283,9 @@ def main(argv: list[str] | None = None) -> None:
     verify_p = sub.add_parser("verify", help="端到端验证（输入识别→输出合理性→数据库沉淀）")
     verify_p.add_argument("--out", default="", help="验证报告保存路径")
 
+    ask_p = sub.add_parser("ask", help="业务问数（路由：结构化优先，缺失自动降级文档）")
+    ask_p.add_argument("question")
+
     args = parser.parse_args(argv)
     if args.command == "init-db":
         store = _open_store()
@@ -291,6 +315,8 @@ def main(argv: list[str] | None = None) -> None:
         _extract_file(args.path, args.engine)
     elif args.command == "verify":
         _verify(args.out)
+    elif args.command == "ask":
+        _ask(args.question)
     else:
         parser.print_help()
         sys.exit(1)
